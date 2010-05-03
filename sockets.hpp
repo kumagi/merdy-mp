@@ -10,15 +10,14 @@ public:
 	void set_wavy_loop(mp::wavy::loop* _lo){
 		lo = _lo;
 	}
-	void write(const address& ad ,const void* const buff,int size){
+	inline void write(const address& ad ,const void* const buff,int size){
 		int fd = get_socket(ad);
 		lo->write(fd, buff,size);
 	}
-	void writev(const address& ad ,const struct iovec* vec, size_t veclen){
+	inline void writev(const address& ad ,const struct iovec* vec, size_t veclen){
 		int fd = get_socket(ad);
 		::writev(fd, vec,veclen);
 	}
-private:
 	inline int get_socket(const address& ad){
 		std::map<address,int>::const_iterator it = fds.find(ad);
 		if(it == fds.end()){

@@ -1,4 +1,4 @@
-
+#include <stdint.h>
 #include <stdlib.h>
 #include <mp/wavy.h>
 #include <unordered_set>
@@ -70,7 +70,7 @@ public:
 			const struct iovec* iov = vbuf.vector();
 			writev(fd, iov, vbuf.vector_size());
 			break;
-		}
+		} 
 		case OP::ADD_ME_DY:{
 			fprintf(stderr,"add me dy:");
 			msgpack::type::tuple<int,address> out(obj);
@@ -101,10 +101,10 @@ public:
 			address newnode = out.get<1>();
 			merdy_nodes.insert(newnode);
 			
-			int answer = OP::OK_ADD_ME_MER;
+			msgpack::type::tuple<int,std::set<address> > mes((int)OP::UPDATE_MER_LIST,merdy_nodes);
 			msgpack::vrefbuffer vbuf;
-			msgpack::pack(vbuf,answer);
-			const struct iovec* iov = vbuf.vector();
+			msgpack::pack(vbuf, mes);
+			const struct iovec* iov(vbuf.vector());
 			sockets.writev(newnode, iov, vbuf.vector_size());
 			break;
 		}

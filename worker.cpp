@@ -12,6 +12,8 @@
 
 
 #include <boost/program_options.hpp>
+#include <unordered_map>
+
 
 static const char interrupt[] = {-1,-12,-1,-3,6};
 
@@ -27,6 +29,33 @@ std::set<address> dynamo_nodes;
 std::set<address> merdy_nodes;
 std::map<uint64_t,address> dy_hash;
 socket_set sockets;
+
+// wait fowarding list
+class coordinate_wait{
+public:
+	const int fd;
+	const std::string key;
+	coordinate_wait(const int& _fd, const std::string& _key):fd(_fd),key(_key){}
+	bool operator==(const coordinate_wait& rhs)const{
+		return fd == rhs.fd && key == rhs.key;
+	}
+};
+class set_wait{
+public:
+	const int fd;
+	const std::string key;
+	set_wait(const int& _fd, const std::string& _key):fd(_fd),key(_key){}
+	bool operator==(const set_wait& rhs)const{
+		return fd == rhs.fd && key == rhs.key;
+	}
+};
+	
+		
+std::unordered_multimap<coordinate_wait, int> coordinate_fwd;
+
+
+
+std::unordered_map<std::string, std::string> key_value;
 
 void dump_hashes(){
 	std::map<uint64_t,address>::iterator it = dy_hash.begin();
@@ -49,16 +78,14 @@ public:
 		int operation = out.get<0>();
 		switch (operation){
 		case OP::UPDATE_HASHES:{
-			fprintf(stderr,"kita-");
 			msgpack::type::tuple<int,std::map<uint64_t,address> > out(obj);
 			std::map<uint64_t,address> tmp_dy_hash = out.get<1>();
 			std::map<uint64_t,address>::iterator it = tmp_dy_hash.begin();
 			
-			
 			while(it != tmp_dy_hash.end()){
 				dy_hash.insert(*it);
 				
-				it->second.dump();
+				// it->second.dump();
 				++it;
 			}
 			break;
@@ -67,13 +94,35 @@ public:
 			fprintf(stderr,"status: ok");
 			break;
 		}
-		case OP::SET_DY:{
+		case OP::SET_DY:{// op, key, value, replicas
+			// it searches coordinator
+			msgpack::type::tuple<int, std::string, std::string, int> out(obj);
+			std::string& key = out.get<1>();
+			std::string& value = out.get<2>();
+			const int replicas = out.get<3>();
+			uint64_t hash = hash_value(key);
+			hash &= ~((1<<8)-1);
+			std::map<uint64_t,address>::const_iterator it = dy_hash.upper_bound(hash);
+			const address& coordinator = it->second;
+			
+			msgpack::type::tuple<int, std::string, std::string, int> mes((int)OP::SET_COORDINATE, key, value, replicas);
+			msgpack::vrefbuffer vbuf;
+			msgpack::pack(vbuf, mes);
+			const struct iovec* iov(vbuf.vector());
+			sockets.writev(coordinator, iov, vbuf.vector_size());
+			
+			coordinate_fwd.insert(std::pair<coordinate_wait,int>(coordinate_wait(sockets.get_socket(coordinator),key),fd));
 			break;
 		}
 		case OP::OK_SET_DY:{
+			
 			break;
 		}
 		case OP::PUT_DY:{
+			// it stores data without any check
+			
+			int ans = OP::OK_PUT_DY;
+			lo->write(fd, &ans, 4);
 			break;
 		}
 		case OP::OK_PUT_DY:{
