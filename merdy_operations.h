@@ -17,15 +17,21 @@ namespace OP{
 		ADD_ME_MER,
 		
 		// dynamo
+		//setting
 		UPDATE_HASHES,
 		OK_ADD_ME_DY,
+		//writing
 		SET_DY, // search cordinate
 		OK_SET_DY,
 		PUT_DY, // store data without everything
 		OK_PUT_DY,
-		GET_DY,
-		DEL_DY,
 		SET_COORDINATE,
+		OK_SET_COORDINATE,
+		//reading
+		GET_DY,
+		FOUND_DY,
+		NOTFOUND_DY,
+		DEL_DY,
 		
 		// merdy
 		OK_ADD_ME_MER,

@@ -3,7 +3,7 @@
 
 class socket_set{
 	mp::wavy::loop* lo;
-	std::map<address,int> fds; // fixme: it shuould be searchable address and socket
+	std::map<address,int> fds; // fixme: it shuould be searchable both address and socket
 public:
 	socket_set():lo(NULL){}
 	socket_set(mp::wavy::loop* _lo):lo(_lo){}
@@ -28,5 +28,9 @@ public:
 		}else{
 			return it->second;
 		}
+	}
+	inline address get_address(int )const{
+		
+		return address(1,1);
 	}
 };
