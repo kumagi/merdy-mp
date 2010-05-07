@@ -131,7 +131,8 @@ int connect_ip_port(const int socket,const int ip,const unsigned short port){
 	if(connect(socket,(struct sockaddr*)&addr,sizeof(addr))){
 		perror("connect");
 		fprintf(stderr,"target:%s\n",ntoa(ip));
-		exit(1);
+		//exit(1);
+		assert(!"connect failed");
 		return 1;
 	}
 	return 0;

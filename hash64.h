@@ -18,12 +18,12 @@
 #define MurmurHash64 MurmurHash64B
 #endif
 template<typename T>
-inline long long hash_value(const T& obj,unsigned int seed=0){
+inline long long hash64(const T& obj,unsigned int seed=0){
 	return MurmurHash64(&obj, sizeof(obj), seed);
 }
-inline long long hash_value(const void* const ptr, const int len,unsigned int seed=0){
+inline long long hash64(const void* const ptr, const int len,unsigned int seed=0){
 	return MurmurHash64(ptr, len, seed);
 }
-inline long long hash_value(const std::string& data, unsigned int seed=0){
+inline long long hash64(const std::string& data, unsigned int seed=0){
 	return MurmurHash64(data.c_str(),data.length(), seed);
 }

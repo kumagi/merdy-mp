@@ -2,12 +2,12 @@
 #define ADDRESS_H_
 #include <boost/functional/hash.hpp>
 #include <msgpack.hpp>
+#include "hash32.h"
 
 class address {
 private:
 	int ip;
 	unsigned short port;
-	friend size_t hash_value(const address& ad);
 public:
 	address():ip(aton("127.0.0.1")),port(11211){};
 	address(const int _ip,const unsigned short _port):ip(_ip),port(_port){};
@@ -40,15 +40,22 @@ public:
 	bool operator!=(const address& rhs)const{
 		return ip != rhs.ip || port != rhs.port;
 	}
+	size_t hash32(void)const{
+		return ::hash32(this,6);
+	}
 	
 	MSGPACK_DEFINE(ip, port); // serialize and deserialize ok
 };
 
-size_t hash_value(const address& ad){
-	size_t h = 0;
-	boost::hash_combine(h, ad.ip);
-	boost::hash_combine(h, ad.port);
-	return h;
+size_t hash(const address& ad){
+	return ad.hash32();
 }
+
+class address_hash{
+public:
+	std::size_t operator()(const address& ad)const{
+		return ad.hash32();
+	}
+};
 
 #endif

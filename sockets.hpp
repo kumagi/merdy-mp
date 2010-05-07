@@ -1,11 +1,14 @@
 #include "address.hpp"
-
+#include <mp/sync.h>
+#include <unordered_map>
 
 class socket_set{
 	mp::wavy::loop* lo;
-	std::map<address,int> fds; // fixme: it shuould be searchable both address and socket
+	mp::sync< std::unordered_map<address, int,address_hash> > fds;
+	
 public:
-	socket_set():lo(NULL){}
+	socket_set():lo(NULL){
+	}
 	socket_set(mp::wavy::loop* _lo):lo(_lo){}
 	void set_wavy_loop(mp::wavy::loop* _lo){
 		lo = _lo;
@@ -19,18 +22,15 @@ public:
 		::writev(fd, vec,veclen);
 	}
 	inline int get_socket(const address& ad){
-		std::map<address,int>::const_iterator it = fds.find(ad);
-		if(it == fds.end()){
+		mp::sync< std::unordered_map<address, int,address_hash> >::ref fds_r(fds);
+		std::unordered_map<address,int>::const_iterator it = fds_r->find(ad);
+		if(it == fds_r->end()){
 			int newfd = create_tcpsocket();
 			connect_ip_port(newfd, ad.get_ip(), ad.get_port());
-			fds.insert(std::pair<address,int>(ad,newfd));
+			fds_r->insert(std::pair<address,int>(ad,newfd));
 			return newfd;
 		}else{
 			return it->second;
 		}
-	}
-	inline address get_address(int )const{
-		
-		return address(1,1);
 	}
 };

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <assert.h>
 
 #define MAX_SENDBUF_SIZE (256 * 1024 * 1024)
 #define MAX_RECVBUF_SIZE (256 * 1024 * 1024)

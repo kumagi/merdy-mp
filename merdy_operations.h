@@ -26,9 +26,9 @@ namespace OP{
 		PUT_DY, // store data without everything
 		OK_PUT_DY,
 		SET_COORDINATE,
-		OK_SET_COORDINATE,
 		//reading
 		GET_DY,
+		SEND_DY,
 		FOUND_DY,
 		NOTFOUND_DY,
 		DEL_DY,
