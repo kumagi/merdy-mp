@@ -2,7 +2,7 @@ CC=g++44
 OPTS=-Wall -W -fexceptions -std=c++0x  -march=x86-64 -g
 LD=-lmpio -lmsgpack -lmsgpackc -pthread -lboost_program_options
 WARNS = -Wextra -Wformat=2 -Wstrict-aliasing=2 -Wcast-qual -Wcast-align \
-	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum
+	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum -Winline
 OBJS=tcp_wrap.o
 
 target:master

@@ -10,7 +10,9 @@
 #include "address.hpp"
 #include "sockets.hpp"
 #include "merdy_operations.h"
+#include <limits.h>
 #include "debug_mode.h"
+
 
 #include <boost/tuple/tuple.hpp>
 #include <boost/program_options.hpp>
@@ -140,10 +142,255 @@ public:
 	}
 };
 
+// mercury object
+
+std::string get_strhalf(std::string begin, std::string end){
+	int conflict = -1;
+	unsigned char head,tail;
+	do{
+		conflict++;
+		head = begin.c_str()[conflict];
+		tail = end.c_str()[conflict];
+	}while((char)((int)head + (int)tail / 2) == begin.c_str()[conflict]);
+	char middle[begin.length()];
+	memcpy(middle, begin.data(), begin.length());
+	middle[conflict] = (char)((int)head + (int)tail / 2);
+	middle[conflict+1] = '\0';
+	return std::string(middle);
+
+}
+
+
+class attr{
+	int num;
+	std::string str;
+	int num_or_str;
+	enum flag{
+		number = 0,
+		string = 1,
+		invalid = 2,
+	};
+public:
+	attr():num(),str(),num_or_str(invalid){};
+	attr(int _num):num(_num),str(),num_or_str(number){};
+	attr(const std::string& _str):num(),str(_str),num_or_str(string){}
+	attr(const attr& org):num(org.num),str(org.str),num_or_str(org.num_or_str){}
+	
+	int get_int()const{
+		assert(num_or_str == number);
+		return num;
+	}
+	std::string get_string() const{
+		assert(num_or_str == string);
+		return str;
+	}
+	void set_string(const std::string& _str){
+		assert(num_or_str == string);
+		str = _str;
+	}
+	bool is_int()const{
+		return num_or_str == number;
+	}
+	bool is_invalid()const{
+		return number == invalid;
+	} 
+	void set(int _num){
+		num_or_str = number;
+		num = _num;
+	}
+	void set(std::string& _str){
+		num_or_str = string;
+		str = _str;
+	}
+	attr get_middle(const attr& rhs)const{
+		// assertion: rhs is bigger than me
+		if(is_invalid()){
+			assert(!rhs.is_invalid());
+			if(rhs.is_int()){
+				return attr(rhs.num + INT_MIN / 2);
+			}else{
+				return attr(get_strhalf(" ",rhs.get_string()));
+			}
+		}else if(rhs.is_invalid()){
+			if(is_int()){
+				return attr(num + INT_MAX / 2);
+			}else{
+				return attr(get_strhalf(get_string(),"~~~~~~~~~~~~~~"));
+			}
+		}else if(is_int()){
+			return attr(num + rhs.num / 2);
+		}else{
+			return attr(get_strhalf(str, rhs.get_string()));
+		}
+	}
+	bool operator<(const attr& rhs)const{
+		assert(num_or_str == rhs.num_or_str);
+		if(num_or_str == number){
+			return num < rhs.num;
+		}else if(num_or_str == string){
+			return str < rhs.str;
+		}else{
+			assert(!"invalid comparison");
+			return 0;
+		}
+	}
+	bool operator==(const attr& rhs)const{
+		assert(num_or_str == rhs.num_or_str);
+		if(num_or_str == number){
+			return num == rhs.num;
+		}else if(num_or_str == string){
+			return str == rhs.str;
+		}else{
+			assert(!"invalid comparison");
+			return 0;
+		}
+	}
+	void operator=(const attr& rhs){
+		num = rhs.num;
+		str = rhs.str;
+		num_or_str = rhs.num_or_str;
+	}
+	MSGPACK_DEFINE(num, str, num_or_str); // serialize and deserialize ok
+};
+
+
+
+namespace closed{
+enum flag{
+	closed = true,
+	opened = false,
+};
+}
+class attr_range{
+	attr begin;
+	attr end;
+	bool left_closed;
+	bool right_closed;
+public:
+	attr_range():begin(),end(),left_closed(true),right_closed(true){};
+	attr_range(const attr_range& org):begin(org.begin),end(org.end),left_closed(org.left_closed),right_closed(org.right_closed){};
+	attr_range(const attr& _begin, const attr& _end):begin(_begin),end(_end),left_closed(true),right_closed(true){
+		assert(_begin < _end);
+	}
+	attr_range(const attr& _begin, const attr& _end, const bool _l, const bool _r):begin(_begin),end(_end),left_closed(_l),right_closed(_r){
+		assert(_begin < _end);
+	}
+	bool operator==(const attr_range& rhs)const{
+		return begin == rhs.begin && end == rhs.end && left_closed == rhs.left_closed && right_closed == rhs.right_closed;
+	}
+	void get_up_from(const attr& border, attr_range* half)const{
+		assert(is_inRange(border));
+		assert(border != begin);
+		half->begin = border;
+		half->end = end;
+		half->left_closed = true;
+		half->right_closed = right_closed;
+	}
+	void get_down_from(const attr& border, attr_range* half)const{
+		assert(is_inRange(border));
+		assert(border != end);
+		half->begin = begin;
+		half->end = border;
+		half->left_closed = left_closed;
+		half->right_closed = false;
+	}
+	void cut_up_from(const attr& border, attr_range* half){
+		assert(is_inRange(border));
+		assert(border != begin);
+		half->begin = border;
+		half->end = end;
+		half->left_closed = true;
+		half->right_closed = right_closed;
+		right_closed = false;
+		end = border;
+	}
+	void cut_down_from(const attr& border, attr_range* half){
+		assert(is_inRange(border));
+		assert(border != end);
+		half->begin = begin;
+		half->end = border;
+		half->left_closed = left_closed;
+		half->right_closed = false;
+		left_closed = true;
+		begin = border;
+	}
+	void cut_uphalf(attr_range* half){
+		attr middle = begin.get_middle(end);
+		half->begin = middle;
+		half->end = end;
+		assert(middle != begin);
+		half->left_closed = true;
+		half->right_closed = right_closed;
+		right_closed = false;
+		end = middle;
+	}
+	void cut_downhalf(attr_range* half){
+		attr middle = begin.get_middle(end);
+		half->begin = begin;
+		half->end = middle;
+		assert(middle != end);
+		half->left_closed = left_closed;
+		half->right_closed = false;
+		left_closed = true;
+		begin = middle;
+	}
+	bool is_inRange(const attr& atr){
+		if(begin.is_invalid()){
+			return atr < end || (left_closed && atr == end);
+		}else if(end.is_invalid()){
+			return begin < atr || (right_closed && atr == begin);
+		}else{
+			return (begin < atr && atr < end) ||
+				(left_closed && atr == begin) ||
+				(right_closed && atr == end);
+		}
+	}
+	bool operator<(const attr_range& rhs)const{
+		return begin < rhs.begin;
+	}
+	const attr& get_begin()const{
+		return begin;
+	}
+	
+	MSGPACK_DEFINE(begin,end,left_closed,right_closed);
+};
+
+class mercury_instance{
+	std::string attr_name;
+	attr_range range;
+	std::map<attr_range, address> hubs;
+public:
+	std::map<attr, int> kvp;
+	mercury_instance():attr_name(""),range(){}
+	mercury_instance(const std::string _name, const attr_range& _range):attr_name(_name),range(_range){}
+	mercury_instance(const mercury_instance& org):attr_name(org.attr_name),range(org.range){}
+	
+	const std::string& get_name()const{
+		return attr_name;
+	}
+	const attr_range& get_range()const{
+		return range;
+	}
+	const std::map<attr_range, address>& get_hubs()const{
+		return hubs;
+	}
+	
+	bool operator<(const mercury_instance& rhs)const{
+		return attr_name < rhs.attr_name;
+	}
+	bool operator==(const mercury_instance& rhs)const{
+		return attr_name == rhs.attr_name;
+	}
+	
+	MSGPACK_DEFINE(attr_name,range);
+};
+
 mp::sync< std::unordered_multimap<fwd_wait, int, fwd_hash> > set_fwd; // set, fd
 mp::sync< std::unordered_multimap<fwd_wait, address,fwd_hash> > coordinate_fwd; // coordinate flag
 mp::sync< std::unordered_multimap<std::string, std::pair<int,address> > > put_fwd; // counter and origin address
 mp::sync< std::unordered_multimap<std::string, get_fwd_t > > send_fwd; // counter and value with origin address
+
+mp::sync< std::unordered_multimap<std::string, mercury_instance> > mer_node;
 
 std::unordered_map<std::string, value_vclock> key_value;
 
@@ -162,7 +409,6 @@ inline void tuple_send(const tuple& t, const address& ad){
 	const struct iovec* iov(vbuf.vector());
 	sockets.writev(ad, iov, vbuf.vector_size());
 }
-
 
 class main_handler : public mp::wavy::handler {
 	mp::wavy::loop* lo;
@@ -188,6 +434,9 @@ public:
 		msgpack::type::tuple<int> out(obj);
 		int operation = out.get<0>();
 		switch (operation){
+			/* ---------------------- */
+			// Dynamo operations
+			/* ---------------------- */
 		case OP::UPDATE_HASHES:{
 			DEBUG_OUT("UPDATE_HASHES:");
 			msgpack::type::tuple<int,std::map<uint64_t,address> > out(obj);
@@ -201,7 +450,7 @@ public:
 		}
 		case OP::OK_ADD_ME_DY:{
 			DEBUG_OUT("OK_ADD_ME_DY");
-			fprintf(stderr,"status: ok");
+			fprintf(stderr,"dynamo status: ok");
 			break;
 		}
 		case OP::SET_DY:{// op, key, value
@@ -449,6 +698,103 @@ public:
 		case OP::DEL_DY:{
 			break;
 		}
+			/* ---------------------- */
+			// Mercury operations
+			/* ---------------------- */
+		case OP::OK_ADD_ME_MER:{
+			DEBUG_OUT("OK_ADD_ME_MER");
+			fprintf(stderr,"mercury status: ok");
+			break;
+		}
+		case OP::UPDATE_MER_HUB:{// op, std::map<address>
+			DEBUG_OUT("UPDATE_MER_HUB:");
+			msgpack::type::tuple<int, std::set<address> > update_mer_hub(obj);
+			std::set<address>& tmp_mer_hub = update_mer_hub.get<1>();
+			std::set<address>::iterator it = tmp_mer_hub.begin();
+			
+			break;
+		}
+		case OP::ASSIGN_ATTR:{ // op, mercury_instance
+			DEBUG_OUT("ASSIGN_ATTR");
+			msgpack::type::tuple<int, mercury_instance> assign_attr(obj);
+			mercury_instance& mi = assign_attr.get<1>();
+			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
+			mer_node_r->insert(std::pair<std::string, mercury_instance>(mi.get_name(),mi));
+			break;
+		}
+		case OP::SET_ATTR:{ // op, attr_name, attr, int
+			break;
+		}
+		case OP::OK_SET_ATTR:{
+			break;
+		}
+		case OP::GET_RANGE:{ // op, attr_name, range, org_addres
+			DEBUG_OUT("GET_RANGE");
+			const msgpack::type::tuple<int, std::string, attr_range, address> get_range(obj);
+			const std::string& name = get_range.get<1>();
+			const attr_range& range = get_range.get<2>();
+			const address& org = get_range.get<3>();
+			
+			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
+			std::unordered_multimap<std::string, mercury_instance>::iterator it_mi = mer_node_r->find(name);
+			
+			std::map<attr, int>& key_value = it_mi->second.kvp;
+			const attr_range& myrange = it_mi->second.get_range();
+			const std::map<attr_range, address>& hub = it_mi->second.get_hubs();
+			if(range.get_begin() < it_mi->second.get_range().get_begin()){
+				std::map<attr_range, address>::const_iterator i = hub.begin();
+				if(i->first)
+				attr_range lower;
+				range.get_down_from(myrange.get_begin(), &lower);
+			}
+			std::map<attr, int>::iterator it = key_value.lower_bound(range.get_begin());
+			
+			
+			break;
+		}
+		case OP::TELLME_RANGE:{ // op, attrname, address
+			const msgpack::type::tuple<int, std::string, address> tellme_range(obj);
+			const std::string& name = tellme_range.get<1>();
+			const address& org = tellme_range.get<2>();
+			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
+			std::unordered_multimap<std::string, mercury_instance>::iterator it = mer_node_r->find(name);
+			if(it != mer_node_r->end()){
+				msgpack::type::tuple<int, std::string, attr_range> ok_tellme_range(OP::OK_TELLME_RANGE, name, it->second.get_range());
+				tuple_send(ok_tellme_range, org);
+			}else{
+				msgpack::type::tuple<int, std::string> ng_tellme_range(OP::NG_TELLME_RANGE, name);
+				tuple_send(ng_tellme_range, org);
+			}
+			break;
+		}
+		case OP::OK_TELLME_RANGE:{
+			msgpack::type::tuple<int, std::string> ok_tellme_range(obj);
+			std::string& name = ok_tellme_range.get<1>();
+			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
+			std::unordered_multimap<std::string, mercury_instance>::iterator it = mer_node_r->find(name);
+			
+			break;
+		}
+		case OP::NG_TELLME_RANGE:{
+			msgpack::type::tuple<int, std::string> ng_tellme_range(obj);
+			std::string& name = ng_tellme_range.get<1>();
+			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
+			std::unordered_multimap<std::string, mercury_instance>::iterator it = mer_node_r->find(name);
+			break;
+		}
+		case OP::GIVEME_RANGE:{
+			break;
+		}
+		case OP::ASSIGN_RANGE:{
+			break;
+		}
+		case OP::OK_ASSIGN_RANGE:{
+			break;
+		}
+		case OP::DEL_RANGE:{
+			break;
+		}
+		
 		}
 	}
 	void on_read(mp::wavy::event& e)
