@@ -12,13 +12,10 @@ public:
 	address():ip(aton("127.0.0.1")),port(11211){};
 	address(const int _ip,const unsigned short _port):ip(_ip),port(_port){};
 	address(const address& ad):ip(ad.ip),port(ad.port){}
-	bool operator<(const address& rhs)const{
-		return ip < rhs.ip && port < rhs.port;
-	}
-	int get_ip()const {return ip;}
 	void dump(void)const{
 		fprintf(stderr,"[%s:%d]", ntoa(ip),port);
 	}
+	int get_ip()const {return ip;}
 	unsigned short get_port()const {return port;}
 	
 	unsigned int serialize(char* const ptr) const{
@@ -39,6 +36,12 @@ public:
 	}
 	bool operator!=(const address& rhs)const{
 		return ip != rhs.ip || port != rhs.port;
+	}
+	bool operator<(const address& rhs)const{
+		if(ip < rhs.ip)return true;
+		if(ip > rhs.ip)return false;
+		if(port < rhs.port)return true;
+		else return false;
 	}
 	size_t hash32(void)const{
 		return ::hash32(this,6);

@@ -14,4 +14,5 @@ inline size_t hash32(const std::string o){
 inline size_t hash32(const void* const buff, const int size){
 	return MurmurHash2(buff, size, 0);
 }
+
 #endif

@@ -9,9 +9,21 @@
 #include "address.hpp"
 #include "merdy_operations.h"
 #include "sockets.hpp"
-
+#include "debug_mode.h"
+#include "dynamo_objects.hpp"
+#include "mercury_objects.hpp"
+#include <limits.h>
 
 #include <boost/program_options.hpp>
+
+struct schema_fwd{
+	const address org;
+	int cnt;
+	explicit schema_fwd(const address& _org):org(_org),cnt(4){}
+	explicit schema_fwd(const schema_fwd& _org):org(_org.org),cnt(4){}
+};
+
+mp::sync< std::map<std::string, schema_fwd> > create_schema_fwd;
 
 static const char interrupt[] = {-1,-12,-1,-3,6};
 
@@ -23,11 +35,22 @@ static struct settings{
 	settings():verbose(10),myport(11011),masterport(11011),myip(get_myip()),masterip(aton("127.0.0.1")),i_am_master(1){}
 }settings;
 
-std::set<address> dynamo_nodes;
-std::set<address> merdy_nodes;
-std::map<uint64_t,address> dy_hash;
+mp::sync< std::set<address> > dynamo_nodes;
+mp::sync< std::set<address> > mercury_nodes;
+
+mp::sync< std::map<std::string,std::list<address> > > mercury_assign;
+
+mp::sync< std::map<uint64_t,address> > dy_hash;
 socket_set sockets;
 
+
+template<typename tuple>
+inline void tuple_send(const tuple& t, const address& ad){
+	msgpack::vrefbuffer vbuf;
+	msgpack::pack(vbuf, t);
+	const struct iovec* iov(vbuf.vector());
+	sockets.writev(ad, iov, vbuf.vector_size());
+}
 
 class main_handler : public mp::wavy::handler {
 	mp::wavy::loop* lo;
@@ -41,7 +64,94 @@ public:
 		int operation = out.get<0>();
 		switch (operation){
 		case OP::CREATE_SCHEMA:{
+			const MERDY::create_schema create_schema(obj);
+			const std::string& name = create_schema.get<1>();
+			const int& type = create_schema.get<2>();
+			const address& org = create_schema.get<3>();
 			
+			mp::sync< std::set<address> >::ref mercury_nodes_r(mercury_nodes);
+			std::set<address>::const_iterator it = mercury_nodes_r->begin();
+			int random_loop = rand()%mercury_nodes_r->size();
+			while(random_loop){
+				++it;
+				if(it == mercury_nodes_r->end()){
+					it = mercury_nodes_r->begin();
+				}
+				--random_loop;
+			}  
+			assert(it != mercury_nodes_r->end());
+			
+			// set first attribute
+			attr_range first_range[4];
+			if(type == DATA::INT){
+				first_range[0] = attr_range(attr(INT_MIN),attr(INT_MAX));
+			}else{
+				first_range[0] = attr_range(attr(" "),attr("~~~~~~~~~~~~~~"));
+			}
+			
+			DEBUG_OUT("##3##\n");
+			
+			first_range[0].cut_uphalf(&first_range[2]); first_range[0].dump(); first_range[2].dump(); DEBUG_OUT("\n");
+			first_range[0].cut_uphalf(&first_range[1]); first_range[0].dump(); first_range[1].dump(); DEBUG_OUT("\n");
+			first_range[2].cut_uphalf(&first_range[3]); first_range[2].dump(); first_range[3].dump(); DEBUG_OUT("\n");
+			
+			for(int i=0;i<4;i++){
+				first_range[i].dump();
+			}
+			
+			// setting hub
+			std::map<attr_range,address> hub;
+			for(int i=0;i<4;i++){
+				hub.insert(std::pair<attr_range,address>(first_range[i], *it));
+				++it;
+				if(it == mercury_nodes_r->end()){it = mercury_nodes_r->begin();}
+			}
+			std::map<attr_range,address>::const_iterator hub_it = hub.begin();
+			
+			mp::sync< std::map<std::string, schema_fwd> >::ref create_schema_fwd_r(create_schema_fwd);
+			if(create_schema_fwd_r->find(name) != create_schema_fwd_r->end()){
+				// FIXME: fail to create schema
+			}else{
+				create_schema_fwd_r->insert(std::pair<std::string, schema_fwd>(name, schema_fwd(org)));
+				std::list<address> assignments;
+				DEBUG_OUT("\nstart to assign  ");
+				for(int i=0; i<4; i++){
+					const MERDY::assign_range assign_range(OP::ASSIGN_RANGE, name, hub_it->first, hub,address(settings.myip,settings.myport));
+					tuple_send(assign_range, hub_it->second);
+					hub_it->first.dump();
+					DEBUG_OUT(" -> ");
+					hub_it->second.dump();
+					DEBUG_OUT("\n");
+					++hub_it;
+					assignments.push_back(hub_it->second);
+					if(it == mercury_nodes_r->end()){ it = mercury_nodes_r->begin();}
+				}
+				mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
+				mercury_assign_r->insert(std::pair<std::string, std::list<address> >(name,assignments));
+			}
+			break;
+		}
+		case OP::OK_ASSIGN_RANGE:{
+			DEBUG_OUT("OK_ASSIGN_RANGE:");
+			const MERDY::ok_assign_range ok_assign_range(obj);
+			const std::string& name = ok_assign_range.get<1>();
+			mp::sync< std::map<std::string, schema_fwd> >::ref create_schema_fwd_r(create_schema_fwd);
+			std::map<std::string, schema_fwd>::iterator it = create_schema_fwd_r->find(name);
+			
+			assert(it != create_schema_fwd_r->end());
+			--it->second.cnt;
+			if(it->second.cnt == 0){
+				const MERDY::ok_create_schema ok_create_schema(OP::OK_CREATE_SCHEMA, name);
+				tuple_send(ok_create_schema, it->second.org);
+				create_schema_fwd_r->erase(name);
+			}
+			break;
+		}
+		case OP::NG_ASSIGN_RANGE:{
+			DEBUG_OUT("NG_ASSIGN_RANGE:");
+			MERDY::ng_assign_range ng_assign_range(obj);
+			std::string& name = ng_assign_range.get<1>();
+			DEBUG_OUT(" for %s\n", name.c_str());
 			break;
 		}
 		case OP::DELETE_SCHEMA:{
@@ -51,7 +161,8 @@ public:
 		case OP::SEND_DY_LIST:{
 			msgpack::vrefbuffer vbuf;
 			msgpack::pack(vbuf, static_cast<int>(OP::UPDATE_HASHES));
-			msgpack::pack(vbuf, dynamo_nodes);
+			mp::sync< std::set<address> >::ref dynamo_nodes_r(dynamo_nodes);
+			msgpack::pack(vbuf, *dynamo_nodes_r);
 			const struct iovec* iov = vbuf.vector();
 			lo->write(fd, iov, vbuf.vector_size());
 			break;
@@ -64,48 +175,83 @@ public:
 			break;
 		}
 		case OP::SEND_MER_LIST:{
+			DEBUG_OUT("SEND_MER_LIST:");
 			msgpack::vrefbuffer vbuf;
-			msgpack::pack(vbuf, static_cast<int>(OP::UPDATE_MER_LIST));
-			msgpack::pack(vbuf, merdy_nodes);
+			msgpack::pack(vbuf, static_cast<int>(OP::UPDATE_MER_HUB));
+			mp::sync< std::set<address> >::ref mercury_nodes_r(mercury_nodes);
+			msgpack::pack(vbuf, *mercury_nodes_r);
 			const struct iovec* iov = vbuf.vector();
 			writev(fd, iov, vbuf.vector_size());
 			break;
-		} 
-		case OP::ADD_ME_DY:{
-			fprintf(stderr,"add me dy:");
-			msgpack::type::tuple<int,address> out(obj);
-			address newnode = out.get<1>();
+		}
+		case OP::ADD_ME_DY:{// op, address
+			DEBUG_OUT("ADD_ME_DY");
+			const MERDY::add_me_dy add_me_dy(obj);
+			const address& newnode = add_me_dy.get<1>();
 			
 			newnode.dump();
 			
-			dynamo_nodes.insert(newnode);
+			mp::sync< std::set<address> >::ref dynamo_nodes_r(dynamo_nodes);
+			dynamo_nodes_r->insert(newnode);
+			
+			DEBUG_OUT("dy_nodes:#%d#\n",(int)dynamo_nodes_r->size());
+			
 			uint64_t hashes;
 			int num = (rand() % 3) + 5;
+			
+			mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
 			while(num > 0){
 				hashes = rand64();
-				dy_hash.insert(std::pair<uint64_t,address>(hashes, newnode));
+				dy_hash_r->insert(std::pair<uint64_t,address>(hashes, newnode));
 				num--;
-				fprintf(stderr,"%lld,",hashes);
 			}
 			
+			std::set<address>::iterator it = dynamo_nodes_r->begin();
+			const MERDY::update_hashes update_hashes((int)OP::UPDATE_HASHES,*dy_hash_r);
 			
-			msgpack::type::tuple<int,std::map<uint64_t,address> > mes((int)OP::UPDATE_HASHES,dy_hash);
-			msgpack::vrefbuffer vbuf;
-			msgpack::pack(vbuf, mes);
-			const struct iovec* iov(vbuf.vector());
-			sockets.writev(newnode, iov, vbuf.vector_size());
+			while(it != dynamo_nodes_r->end()){
+				tuple_send(update_hashes,*it);
+				DEBUG_OUT("send to ");
+				it->dump();
+				++it;
+			}
 			break;
 		}
 		case OP::ADD_ME_MER:{
-			msgpack::type::tuple<int,address> out(obj);
-			address newnode = out.get<1>();
-			merdy_nodes.insert(newnode);
+			DEBUG_OUT("ADD_ME_MER");
+			const MERDY::add_me_mer add_me_mer(obj);
+			const address& newnode = add_me_mer.get<1>();
 			
-			msgpack::type::tuple<int,std::set<address> > mes((int)OP::UPDATE_MER_LIST,merdy_nodes);
-			msgpack::vrefbuffer vbuf;
-			msgpack::pack(vbuf, mes);
-			const struct iovec* iov(vbuf.vector());
-			sockets.writev(newnode, iov, vbuf.vector_size());
+			mp::sync< std::set<address> >::ref mercury_nodes_r(mercury_nodes);
+			mercury_nodes_r->insert(newnode);
+			
+			const MERDY::ok_add_me_mer ok_add_me_mer((int)OP::OK_ADD_ME_MER, *mercury_nodes_r);
+			tuple_send(ok_add_me_mer, newnode);
+			break;
+		}
+		case OP::TELLME_ASSIGN:{
+			DEBUG_OUT("TELLME_ASSIGN");
+			const MERDY::tellme_assign tellme_assign(obj);
+			const std::string& attrname = tellme_assign.get<1>();
+			const address& org  = tellme_assign.get<2>();
+			mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
+			std::map<std::string,std::list<address> >::iterator it = mercury_assign_r->find(attrname);
+			
+			if(it != mercury_assign_r->end()){
+				const MERDY::assignment assignment(OP::ASSIGNMENT, attrname, it->second);
+				tuple_send(assignment, org);
+			}else{
+				const MERDY::no_assignment no_assignment(OP::NO_ASSIGNMENT, attrname);
+				tuple_send(no_assignment, org);
+			}
+			break;
+		}
+		case OP::NO_ASSIGNMENT:{
+			DEBUG_OUT("NO_ASSIGNMENT");
+			break;
+		}
+		default:{
+			DEBUG_OUT("illegal message");
 			break;
 		}
 		}
@@ -121,7 +267,7 @@ public:
 
 					e.more();  //e.next();
 					
-					std::cout << "object received: " << msg << std::endl;
+					DEBUG(std::cout << "object received: " << msg << std::endl);
 					event_handle(fd(), msg, &*z);
 					return;
 				}
@@ -137,6 +283,7 @@ public:
 				m_pac.buffer_consumed(read_len);
 			}
 		}catch(...){
+			DEBUG_OUT("fd:%d ",fd());;
 			perror("exception ");
 			e.remove();
 		}
