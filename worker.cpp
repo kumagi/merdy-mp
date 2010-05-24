@@ -35,15 +35,14 @@ std::map<uint64_t,address> dy_hash;
 socket_set sockets;
 
 // dynamo
-mp::sync< std::unordered_multimap<fwd_wait, int, fwd_hash> > set_fwd; // set, fd
-mp::sync< std::unordered_multimap<fwd_wait, address,fwd_hash> > coordinate_fwd; // coordinate flag
-mp::sync< std::unordered_multimap<std::string, std::pair<int,address> > > put_fwd; // counter and origin address
-mp::sync< std::unordered_multimap<std::string, get_fwd_t > > send_fwd; // counter and value with origin address
-mp::sync< std::unordered_map<std::string, value_vclock> > key_value;
+mp::sync< std::unordered_multimap<uint64_t, address> > set_fwd; // set, fd
+mp::sync< std::unordered_multimap<uint64_t, address> > coordinate_fwd; // coordinate flag
+mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > > put_fwd; // counter and origin address
+mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > > send_fwd; // counter and value with origin address
+mp::sync< std::unordered_map<uint64_t, value_vclock> > key_value;
 
 // mercury
 mp::sync< std::unordered_multimap<std::string, mercury_instance> > mer_node;
-
 
 mp::sync< std::unordered_multimap<mer_fwd_id,mer_get_fwd*,mer_fwd_id_hash> > mer_get_fwds;
 mp::sync< std::unordered_multimap<mer_fwd_id,mer_set_fwd*,mer_fwd_id_hash> > mer_set_fwds;
@@ -119,9 +118,10 @@ public:
 			DEBUG_OUT("SET_DY:");
 			// search coordinator, and forward
 			const MERDY::set_dy set_dy(obj);
-			const std::string& key = set_dy.get<1>();
+			const uint64_t& key = set_dy.get<1>();
 			const std::string& value = set_dy.get<2>();
-			DEBUG_OUT("key[%s] value[%s]",key.c_str(),value.c_str());
+			const address& org = set_dy.get<3>();
+			DEBUG_OUT("key[%lu] value[%s]",key,value.c_str());
 			
 			uint64_t hash = hash64(key);
 			hash &= ~((1<<8)-1);
@@ -132,8 +132,8 @@ public:
 			const address& coordinator = it->second;
 			DEBUG(it->second.dump());
 			
-			mp::sync< std::unordered_multimap<fwd_wait, int, fwd_hash> >::ref set_fwd_r(set_fwd);
-			set_fwd_r->insert(std::pair<fwd_wait,int>(fwd_wait(coordinator,key),fd));
+			mp::sync< std::unordered_multimap<uint64_t, address> >::ref set_fwd_r(set_fwd);
+			set_fwd_r->insert(std::pair<uint64_t,address>(key,org));
 			
 			MERDY::set_coordinate set_coordinate((int)OP::SET_COORDINATE, key, value, address(settings.myip,settings.myport));
 			tuple_send(set_coordinate,coordinator);
@@ -145,31 +145,29 @@ public:
 			DEBUG_OUT("OK_SET_DY:");
 			// responce for fowarding
 			MERDY::ok_set_dy ok_set_dy(obj);
-			const std::string& key = ok_set_dy.get<1>();
-			const address& org = ok_set_dy.get<2>();
+			const uint64_t& key = ok_set_dy.get<1>();
 			
-			DEBUG(fwd_wait(org,key).dump());
-			mp::sync< std::unordered_multimap<fwd_wait, int, fwd_hash> >::ref set_fwd_r(set_fwd);
-			std::unordered_multimap<fwd_wait,int>::iterator it = set_fwd_r->find(fwd_wait(org,key));
+			mp::sync< std::unordered_multimap<uint64_t, address> >::ref set_fwd_r(set_fwd);
+			std::unordered_multimap<uint64_t,address>::iterator it = set_fwd_r->find(key);
 			if(it == set_fwd_r->end()){
-				fwd_wait(org, key).dump();
-				fwd_wait(org, key).dump();
 				DEBUG_OUT("not found\n");
 				break;
 			}
-			std::string mes("ok");
-			int fd = it->second;
-			write(fd, mes.data(), 2);
+			{
+				MERDY::ok_set_dy ok_set_dy(OP::OK_SET_DY,key);
+				tuple_send(ok_set_dy,it->second);
+				set_fwd_r->erase(it);
+			}
 			break;
 		}
 		case OP::SET_COORDINATE:{// op, key, value, address
 			DEBUG_OUT("SET_COORDINATE:");
 			MERDY::set_coordinate set_coordinate(obj);
-			const std::string& key = set_coordinate.get<1>();
+			const uint64_t& key = set_coordinate.get<1>();
 			const std::string& value = set_coordinate.get<2>();
 			const address& org = set_coordinate.get<3>();
-			mp::sync< std::unordered_multimap<std::string, std::pair<int,address> > >::ref put_fwd_r(put_fwd);
-			put_fwd_r->insert(std::pair<std::string, std::pair<int, address> >(key, std::pair<int, address>(0,org)));
+			mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > >::ref put_fwd_r(put_fwd);
+			put_fwd_r->insert(std::pair<uint64_t, std::pair<int, address> >(key, std::pair<int, address>(0,org)));
 			
 			uint64_t hash = hash64(key);
 			hash &= ~((1<<8)-1);
@@ -179,14 +177,14 @@ public:
 			}
 			
 			value_vclock vcvalue;
-			mp::sync< std::unordered_map<std::string, value_vclock> >::ref key_value_r(key_value);
-			std::unordered_map<std::string, value_vclock>::iterator result = key_value_r->find(key);
+			mp::sync< std::unordered_map<uint64_t, value_vclock> >::ref key_value_r(key_value);
+			std::unordered_map<uint64_t, value_vclock>::iterator result = key_value_r->find(key);
 			if(result == key_value_r->end()){
 				vcvalue.update(value);
 			}else{
 				vcvalue.update(value,result->second.get_clock());
 			}
-			key_value_r->insert(std::pair<std::string, value_vclock>(key,vcvalue));
+			key_value_r->insert(std::pair<uint64_t, value_vclock>(key,vcvalue));
 			++it;
 			if(it == dy_hash.end()){
 				it = dy_hash.begin();
@@ -222,21 +220,21 @@ public:
 			DEBUG_OUT("PUT_DY:");
 			// store data, only coordinator can send this message
 			MERDY::put_dy put_dy(obj);
-			const std::string& key = put_dy.get<1>();
+			const uint64_t& key = put_dy.get<1>();
 			const value_vclock& value = put_dy.get<2>();
 			const address& ad = put_dy.get<3>();
-			mp::sync< std::unordered_map<std::string, value_vclock> >::ref key_value_r(key_value);
-			std::unordered_map<std::string, value_vclock>::iterator it = key_value_r->find(key);
+			mp::sync< std::unordered_map<uint64_t, value_vclock> >::ref key_value_r(key_value);
+			std::unordered_map<uint64_t, value_vclock>::iterator it = key_value_r->find(key);
 			if(it == key_value_r->end()){
 				// new insert
-				key_value_r->insert(std::pair<std::string, value_vclock>(key, value_vclock(value)));
-				DEBUG_OUT("saved:%s->%s new!\n",key.c_str(),value_vclock(value).c_str());
+				key_value_r->insert(std::pair<uint64_t, value_vclock>(key, value_vclock(value)));
+				DEBUG_OUT("saved:%lu->%s new!\n",key,value_vclock(value).c_str());
 			}else{
-				DEBUG_OUT("saved:%s->",key.c_str());
+				DEBUG_OUT("saved:%lu->",key);
 				DEBUG(it->second.dump());
 				DEBUG_OUT("   ");
 				it->second.update(value.get_string());
-				DEBUG_OUT("saved:%s->",key.c_str());
+				DEBUG_OUT("saved:%lu->",key);
 				DEBUG(it->second.dump());
 				DEBUG_OUT("\n");
 			}
@@ -249,17 +247,17 @@ public:
 			DEBUG_OUT("OK_PUT_DY:");
 			// ack for PUT_DY, only coordinator should receives it
 			const MERDY::ok_put_dy out(obj);
-			const std::string& key = out.get<1>();
-			mp::sync< std::unordered_multimap<std::string, std::pair<int,address> > >::ref put_fwd_r(put_fwd);
-			std::unordered_multimap<std::string, std::pair<int, address> >::iterator it = put_fwd_r->find(key);
+			const uint64_t& key = out.get<1>();
+			mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > >::ref put_fwd_r(put_fwd);
+			std::unordered_multimap<uint64_t, std::pair<int, address> >::iterator it = put_fwd_r->find(key);
 			if(it == put_fwd_r->end()){
 				break;
 			}
 			++(it->second.first);
 			if(it->second.first == DY::WRITE){
 				// write ok
-				DEBUG_OUT("write ok:[%s]\n",key.c_str());
-				MERDY::ok_set_dy ok_set_dy((int)OP::OK_SET_DY, key, address(settings.myip,settings.myport));
+				DEBUG_OUT("write ok:[%lu]\n",key);
+				MERDY::ok_set_dy ok_set_dy(OP::OK_SET_DY, key);
 				tuple_send(ok_set_dy,it->second.second);
 			}else if(it->second.first == DY::NUM){
 				put_fwd_r->erase(it);
@@ -272,7 +270,8 @@ public:
 		case OP::GET_DY:{
 			DEBUG_OUT("GET_DY:");
 			MERDY::get_dy get_dy(obj);
-			const std::string& key = get_dy.get<1>();
+			const uint64_t& key = get_dy.get<1>();
+			const address& org = get_dy.get<2>();
 			
 			uint64_t hash = hash64(key);
 			hash &= ~((1<<8)-1);
@@ -280,8 +279,8 @@ public:
 			if(it == dy_hash.end()){
 				it = dy_hash.begin();
 			}
-			mp::sync< std::unordered_multimap<std::string, get_fwd_t > >::ref send_fwd_r(send_fwd);
-			send_fwd_r->insert(std::pair<std::string, get_fwd_t>(key, get_fwd_t(value_vclock(),fd)));
+			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
+			send_fwd_r->insert(std::pair<uint64_t, get_fwd_t>(key, get_fwd_t(value_vclock(),org)));
 			
 			int tablerest = dy_hash.size();
 			std::unordered_set<address, address_hash> sentlist;
@@ -302,17 +301,17 @@ public:
 				}
 			}
 			
-			DEBUG_OUT("key:%s\n",key.c_str());
+			DEBUG_OUT("key:%lu\n",key);
 			break;
 		}
 		case OP::SEND_DY:{
 			DEBUG_OUT("SEND_DY:");
 			const MERDY::send_dy send_dy(obj);
-			const std::string& key = send_dy.get<1>();
+			const uint64_t& key = send_dy.get<1>();
 			const address& org = send_dy.get<2>();
 			
-			mp::sync< std::unordered_map<std::string, value_vclock> >::ref key_value_r(key_value);
-			std::unordered_multimap<std::string, value_vclock>::const_iterator ans
+			mp::sync< std::unordered_map<uint64_t, value_vclock> >::ref key_value_r(key_value);
+			std::unordered_multimap<uint64_t, value_vclock>::const_iterator ans
 				= key_value_r->find(key);
 			if(ans == key_value_r->end()){
 				const MERDY::notfound_dy notfound_dy((int)OP::NOTFOUND_DY, key, address(settings.myip,settings.myport));
@@ -329,17 +328,17 @@ public:
 		case OP::FOUND_DY:{ // op, key, vcvalue, address
 			DEBUG_OUT("FOUND_DY:");
 			const MERDY::found_dy found_dy(obj);
-			const std::string& key = found_dy.get<1>();
+			const uint64_t& key = found_dy.get<1>();
 			const value_vclock& value = found_dy.get<2>();
 			const address& org = found_dy.get<3>();
 			
-			mp::sync< std::unordered_multimap<std::string, get_fwd_t > >::ref send_fwd_r(send_fwd);
-			std::unordered_multimap<std::string, get_fwd_t>::iterator it = send_fwd_r->find(key);
+			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
+			std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
 			if(it == send_fwd_r->end()){
-				DEBUG_OUT("%s already answered\n", key.c_str());
+				DEBUG_OUT("%lu already answered\n", key);
 				
-				for(std::unordered_multimap<std::string, get_fwd_t>::iterator it=send_fwd_r->begin();it != send_fwd_r->end(); ++it){
-					fprintf(stderr,"key[%s],",it->first.c_str());
+				for(std::unordered_multimap<uint64_t, get_fwd_t>::iterator it=send_fwd_r->begin();it != send_fwd_r->end(); ++it){
+					fprintf(stderr,"key[%lu],",it->first);
 				}
 				break;
 			}
@@ -349,27 +348,18 @@ public:
 				tuple_send(put_dy, org);
 			}
 			if(it->second.count_eq(DY::READ)){
-				
-				int fd = it->second.get_fd();
-				std::string answer("");
-				answer += "found ";
-				answer += key;
-				answer += " -> ";
-				answer += it->second.get_value();
-				lo->write(fd ,answer.c_str(), answer.length());
-				
 				DEBUG_OUT("counter:%d ",it->second.get_cnt());
+				mp::sync< std::unordered_map<uint64_t, value_vclock> >::ref key_value_r(key_value);
+				std::unordered_multimap<uint64_t, value_vclock>::iterator ans = key_value_r->find(key);
 				
-				mp::sync< std::unordered_map<std::string, value_vclock> >::ref key_value_r(key_value);
-				std::unordered_multimap<std::string, value_vclock>::iterator ans = key_value_r->find(key);
-
 				if(ans != key_value_r->end()){
 					ans->second.update(it->second.get_value());
 				}else{
-					key_value_r->insert(std::pair<std::string, value_vclock>(it->first,it->second.get_value()));
+					key_value_r->insert(std::pair<uint64_t, value_vclock>(it->first,it->second.get_value()));
 				}
+				const MERDY::found_dy found_dy(OP::FOUND_DY,key,it->second.get_vcvalue(),address(settings.myip,settings.myport));
+				tuple_send(found_dy, it->second.org);
 				DEBUG(it->second.dump());
-				
 				send_fwd_r->erase(it);
 				DEBUG_OUT("answered ok\n");
 			}else{
@@ -382,12 +372,12 @@ public:
 		case OP::NOTFOUND_DY:{
 			DEBUG_OUT("NOTFOUND_DY:");
 			MERDY::notfound_dy notfound_dy(obj);
-			const std::string& key = notfound_dy.get<1>();
+			const uint64_t& key = notfound_dy.get<1>();
 			const address& org = notfound_dy.get<2>();
-			DEBUG_OUT("for %s\n",key.c_str());
+			DEBUG_OUT("for %lu\n",key);
 			
-			mp::sync< std::unordered_multimap<std::string, get_fwd_t > >::ref send_fwd_r(send_fwd);
-			std::unordered_multimap<std::string, get_fwd_t>::iterator it = send_fwd_r->find(key);
+			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
+			std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
 			
 			if(it != send_fwd_r->end()){
 				// read repair
@@ -725,11 +715,11 @@ public:
 			std::list<mercury_kvp> ans = ok_get_attr.get<3>();
 			
 			/*
-			std::list<mercury_kvp>::iterator list_it = ans.begin();
-			while(list_it != ans.end()){
-				list_it->dump();
-				++list_it;
-			}
+			  std::list<mercury_kvp>::iterator list_it = ans.begin();
+			  while(list_it != ans.end()){
+			  list_it->dump();
+			  ++list_it;
+			  }
 			//*/
 			
 			// it must have been fowarded

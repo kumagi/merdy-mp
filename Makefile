@@ -8,6 +8,7 @@ HEADS=hash64.h hash32.h random64.h address.hpp sockets.hpp merdy_operations.h de
 target:master
 target:worker
 #target:proxy
+target:dynamo_test
 target:mercury_test
 
 master:master.o tcp_wrap.o
@@ -17,6 +18,8 @@ worker:worker.o tcp_wrap.o
 proxy:proxy.o tcp_wrap.o
 	$(CC) proxy.o tcp_wrap.o -o proxy $(OPTS) $(WARNS) $(LD)
 
+dynamo_test:dynamo_test.o tcp_wrap.o
+	$(CC) dynamo_test.o tcp_wrap.o -o dynamo_test $(OPTS) $(WARNS) $(LD)
 mercury_test:mercury_test.o tcp_wrap.o
 	$(CC) mercury_test.o tcp_wrap.o -o mercury_test  $(OPTS) $(WARNS) $(LD)
 
@@ -28,6 +31,8 @@ worker.o:worker.cpp tcp_wrap.o $(HEADS)
 proxy.o:proxy.cpp tcp_wrap.o $(HEADS)
 	$(CC) proxy.cpp -o proxy.o -c $(OPTS) $(WARNS)
 
+dynamo_test.o:dynamo_test.cpp tcp_wrap.o $(HEADS)
+	$(CC) dynamo_test.cpp -o dynamo_test.o -c $(OPTS) $(WARNS)
 mercury_test.o:mercury_test.cpp tcp_wrap.o $(HEADS)
 	$(CC) mercury_test.cpp -o mercury_test.o -c $(OPTS) $(WARNS)
 

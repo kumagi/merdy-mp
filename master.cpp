@@ -41,6 +41,7 @@ mp::sync< std::set<address> > mercury_nodes;
 mp::sync< std::map<std::string,std::list<address> > > mercury_assign;
 
 mp::sync< std::map<uint64_t,address> > dy_hash;
+
 socket_set sockets;
 
 
@@ -182,6 +183,17 @@ public:
 			msgpack::pack(vbuf, *mercury_nodes_r);
 			const struct iovec* iov = vbuf.vector();
 			writev(fd, iov, vbuf.vector_size());
+			break;
+		}
+		case OP::TELLME_HASHES:{
+			DEBUG_OUT("TELLME_HASHES:");
+			const MERDY::tellme_hashes tellme_hashes(obj);
+			const address& org = tellme_hashes.get<1>();
+			
+			mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
+			const MERDY::update_hashes update_hashes(OP::UPDATE_HASHES,*dy_hash_r);
+			tuple_send(update_hashes,org);
+			DEBUG_OUT("done.\n");
 			break;
 		}
 		case OP::ADD_ME_DY:{// op, address

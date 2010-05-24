@@ -3,19 +3,19 @@
 class fwd_wait{
 public:
 	const address target; // sended
-	const std::string ident; // forward identifier
+	const uint64_t ident; // forward identifier
 	
-	fwd_wait(const address& _target, const std::string& _ident)
+	fwd_wait(const address& _target, const uint64_t& _ident)
 			:target(_target),ident(_ident){}
 	bool operator==(const fwd_wait& rhs)const{
 		return target == rhs.target && ident == rhs.ident;
 	}
 	unsigned int size()const{
-		return sizeof(address) + ident.length();
+		return sizeof(address) + sizeof(uint64_t);
 	}
 	void dump(void)const{
 		target.dump();
-		fprintf(stderr,"#%s#\n",ident.c_str());
+		fprintf(stderr,"#%lu#\n",ident);
 	}
 };
 class fwd_hash{
@@ -78,12 +78,12 @@ private:
 	value_vclock& operator=(const value_vclock&);
 };
 
-class get_fwd_t{
+struct get_fwd_t{
 	int counter;
 	value_vclock value_vc;
-	const int origin;
+	const address org;
 public:
-	get_fwd_t(const value_vclock& _value_vc, const int _origin):counter(0),value_vc(_value_vc),origin(_origin){}
+	get_fwd_t(const value_vclock& _value_vc, const address& _org):counter(0),value_vc(_value_vc),org(_org){}
 	bool update(const value_vclock& newitem){
 		++counter;
  		return value_vc.update(newitem);
@@ -91,8 +91,8 @@ public:
 	inline bool count_eq(const int reads)const{
 		return counter == reads;
 	}
-	inline int get_fd(void)const{
-		return origin;
+	inline const address& get_fd(void)const{
+		return org;
 	}
 	inline int get_cnt()const{
 		return counter;
@@ -104,7 +104,8 @@ public:
 		return value_vc;
 	}
 	inline void dump(void)const{
-		fprintf(stderr,"origin:%d ",origin);
+		fprintf(stderr,"origin:");
+		org.dump();
 		value_vc.dump();
 		fprintf(stderr," cnt:%d ",counter);
 	}
