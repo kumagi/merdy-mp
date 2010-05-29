@@ -28,8 +28,8 @@ public:
 		invalid = 2,
 	};
 	attr():num(),str(),num_or_str(invalid){};
-	attr(int _num):num(_num),str(),num_or_str(number){};
-	attr(const std::string& _str):num(),str(_str),num_or_str(string){}
+	explicit attr(int _num):num(_num),str(),num_or_str(number){};
+	explicit attr(const std::string& _str):num(),str(_str),num_or_str(string){}
 	attr(const attr& org):num(org.num),str(org.str),num_or_str(org.num_or_str){}
 	
 	int get_int()const{
@@ -46,6 +46,9 @@ public:
 	}
 	bool is_int()const{
 		return num_or_str == number;
+	}
+	bool is_string()const{
+		return num_or_str == string;
 	}
 	bool is_invalid()const{
 		return number == invalid;
@@ -109,13 +112,16 @@ public:
 	std::size_t hash32()const{
 		return num + ::hash32(str);
 	}
+	std::size_t hash64()const{
+		return num + ::hash64(str);
+	}
 	void dump()const{
 		if(num_or_str == number){
-			fprintf(stderr,"%d,",num);
+			fprintf(stderr,"%d ",num);
 		}else if(num_or_str == string){
-			fprintf(stderr,"%s,",str.c_str());
+			fprintf(stderr,"%s ",str.c_str());
 		}else{
-			fprintf(stderr,"*");
+			fprintf(stderr,"* ");
 		}
 	}
 	MSGPACK_DEFINE(num, str, num_or_str); // serialize and deserialize ok
@@ -153,8 +159,8 @@ public:
 			half->left_closed = (begin < range.begin) ? range.left_closed : left_closed;
 			half->right_closed = (range.end < end) ? range.right_closed : right_closed;
 		}else{
-			half->begin = attr::invalid;
-			half->end = attr::invalid;
+			half->begin = attr();
+			half->end = attr();
 		}
 	}
 	bool is_invalid()const{

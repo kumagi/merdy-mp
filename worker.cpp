@@ -12,8 +12,8 @@
 #include "merdy_operations.h"
 #include <limits.h>
 #include "debug_mode.h"
-#include "dynamo_objects.hpp"
 #include "mercury_objects.hpp"
+#include "dynamo_objects.hpp"
 
 
 #include <boost/program_options.hpp>
@@ -119,9 +119,14 @@ public:
 			// search coordinator, and forward
 			const MERDY::set_dy set_dy(obj);
 			const uint64_t& key = set_dy.get<1>();
-			const std::string& value = set_dy.get<2>();
+			const std::list<attr>& value = set_dy.get<2>();
 			const address& org = set_dy.get<3>();
-			DEBUG_OUT("key[%lu] value[%s]",key,value.c_str());
+			
+			DEBUG(std::cout << "key[" << key << "] value[");
+			for(std::list<attr>::const_iterator it = value.begin(); it!=value.end(); ++it){
+				it->dump();
+			}
+			DEBUG(std::cout << "]" << std::endl);
 			
 			uint64_t hash = hash64(key);
 			hash &= ~((1<<8)-1);
@@ -164,7 +169,7 @@ public:
 			DEBUG_OUT("SET_COORDINATE:");
 			MERDY::set_coordinate set_coordinate(obj);
 			const uint64_t& key = set_coordinate.get<1>();
-			const std::string& value = set_coordinate.get<2>();
+			const std::list<attr>& value = set_coordinate.get<2>();
 			const address& org = set_coordinate.get<3>();
 			mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > >::ref put_fwd_r(put_fwd);
 			put_fwd_r->insert(std::pair<uint64_t, std::pair<int, address> >(key, std::pair<int, address>(0,org)));
@@ -228,14 +233,13 @@ public:
 			if(it == key_value_r->end()){
 				// new insert
 				key_value_r->insert(std::pair<uint64_t, value_vclock>(key, value_vclock(value)));
-				DEBUG_OUT("saved:%lu->%s new!\n",key,value_vclock(value).c_str());
+				DEBUG_OUT("saved:%lu-> ",key);
+				DEBUG(value.dump(););
+				DEBUG_OUT(" new!\n");
 			}else{
+				it->second.update(value.get_value());
 				DEBUG_OUT("saved:%lu->",key);
-				DEBUG(it->second.dump());
-				DEBUG_OUT("   ");
-				it->second.update(value.get_string());
-				DEBUG_OUT("saved:%lu->",key);
-				DEBUG(it->second.dump());
+				DEBUG(value.dump(););
 				DEBUG_OUT("\n");
 			}
 			
@@ -424,7 +428,7 @@ public:
 				DEBUG_OUT("i dont have attr %s\n",name.c_str());
 			}
 			
-			DEBUG_OUT("start to set data ");
+			DEBUG_OUT("set data in [%s] ",name.c_str());
 			
 			mp::sync< std::unordered_multimap<mer_fwd_id, mer_set_fwd*, mer_fwd_id_hash> >::ref mer_set_fwds_r(mer_set_fwds);
 			mer_set_fwd* fwd = NULL;

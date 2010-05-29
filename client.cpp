@@ -23,6 +23,26 @@ static struct settings{
 	settings():verbose(10),targetport(11011),myip(get_myip()),targetip(aton("127.0.0.1")){}
 }settings;
 
+class file_ptr{
+public:
+	FILE* fp;
+	file_ptr(FILE* const _fp):fp(_fp){};
+	FILE* get(){
+		return fp;
+	}
+	~file_ptr(){
+		fclose(fp);
+	}
+};
+socket_set sockets;
+
+template<typename tuple>
+inline void tuple_send(const tuple& t, const address& ad){
+	msgpack::vrefbuffer vbuf;
+	msgpack::pack(vbuf, t);
+	const struct iovec* iov(vbuf.vector());
+	sockets.writev(ad, iov, vbuf.vector_size());
+}
 
 namespace po = boost::program_options;
 int main(int argc, char** argv){
@@ -72,35 +92,12 @@ int main(int argc, char** argv){
 		char buff[256];
 		int targetfd = create_tcpsocket();
 		connect_ip_port(targetfd, settings.targetip,settings.targetport);
-		for(int i=0;i<1024;++i){
-			{
-				char key[64];
-				char val[64];
-				sprintf(key,"k%d",i);
-				sprintf(val,"v%d",i);
-				msgpack::type::tuple<int,std::string,std::string> set_dy((int)OP::SET_DY, std::string(key),std::string(val));
-				
-				msgpack::vrefbuffer vbuf;
-				msgpack::pack(vbuf, set_dy);
-				const struct iovec* iov(vbuf.vector());
-				writev(targetfd, iov, vbuf.vector_size());
-			
-				int recvlen = read(targetfd,buff,256);
-				buff[recvlen] = '\0';
-				//fprintf(stderr,"received %d byte [%s]\n",recvlen,buff);
-			}
-			{
-				char key[64];
-				sprintf(key,"k%d",i);
-				msgpack::type::tuple<int,std::string> get_dy((int)OP::GET_DY, std::string(key));
-				msgpack::vrefbuffer vbuf;
-				msgpack::pack(vbuf, get_dy);
-				const struct iovec* iov(vbuf.vector());
-				writev(targetfd, iov, vbuf.vector_size());
-			
-				int recvlen = read(targetfd,buff,256);
-				buff[recvlen] = '\0';
-				//fprintf(stderr,"received %d byte [%s]\n",recvlen,buff);
+		{
+			file_ptr fp(fopen("testdata.txt","r"));
+			while(fgets(buff,256,fp.get())){
+				std::string sql = std::string(buff);
+				const msgpack::type::tuple<int,std::string> do_sql(OP::DO_SQL,sql);
+				tuple_send(do_sql,address(settings.targetip,settings.targetport));
 			}
 		}
 	}

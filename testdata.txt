@@ -1,0 +1,3 @@
+CREATE TABLE merdy (name char,published_year int,pages int,type char)
+INSERT INTO merdy (name,published_year,pages,type) VALUES  (hoge,1928,121,technology)
+INSERT INTO merdy (name,published_year,pages,type) VALUES (fuga,1918,262,science)

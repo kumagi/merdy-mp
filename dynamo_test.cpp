@@ -94,10 +94,10 @@ public:
 			DEBUG_OUT("ASSIGNMENT:");
 			MERDY::assignment assignment(obj);
 			std::string& name = assignment.get<1>();
-			std::list<address>& assign = assignment.get<2>();
+			std::map<attr_range,address>& assign = assignment.get<2>();
 			
 			mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
-			mercury_assign_r->insert(std::pair<std::string, std::list<address> >(name, assign));
+			mercury_assign_r->insert(std::pair<std::string, std::map<attr_range,address> >(name, assign));
 			
 			DEBUG_OUT("ok\n");
 			break;

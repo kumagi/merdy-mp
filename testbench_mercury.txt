@@ -1,0 +1,4 @@
+set k1,12
+set k11,32
+set k2,432
+get k1

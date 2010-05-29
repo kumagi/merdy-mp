@@ -3,13 +3,14 @@ OPTS=-O0 -fexceptions -std=c++0x  -march=x86-64 -g
 LD=-lmpio -lmsgpack -lmsgpackc -pthread -lboost_program_options
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \
 	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum
-HEADS=hash64.h hash32.h random64.h address.hpp sockets.hpp merdy_operations.h debug_mode.h dynamo_objects.hpp mercury_objects.hpp
+HEADS=hash64.h hash32.h random64.h address.hpp sockets.hpp merdy_operations.h debug_mode.h dynamo_objects.hpp mercury_objects.hpp 
 
 target:master
 target:worker
-#target:proxy
-target:dynamo_test
-target:mercury_test
+target:proxy
+target:client
+#target:dynamo_test
+#target:mercury_test
 
 master:master.o tcp_wrap.o
 	$(CC) master.o tcp_wrap.o -o master $(OPTS) $(WARNS) $(LD)
@@ -17,6 +18,8 @@ worker:worker.o tcp_wrap.o
 	$(CC) worker.o tcp_wrap.o -o worker $(OPTS) $(WARNS) $(LD)
 proxy:proxy.o tcp_wrap.o
 	$(CC) proxy.o tcp_wrap.o -o proxy $(OPTS) $(WARNS) $(LD)
+client:client.o tcp_wrap.o
+	$(CC) client.o tcp_wrap.o -o client $(OPTS) $(WARNS) $(LD)
 
 dynamo_test:dynamo_test.o tcp_wrap.o
 	$(CC) dynamo_test.o tcp_wrap.o -o dynamo_test $(OPTS) $(WARNS) $(LD)
@@ -28,8 +31,10 @@ master.o:master.cpp tcp_wrap.o $(HEADS)
 	$(CC) master.cpp -o master.o -c $(OPTS) $(WARNS)
 worker.o:worker.cpp tcp_wrap.o $(HEADS)
 	$(CC) worker.cpp -o worker.o -c $(OPTS) $(WARNS)
-proxy.o:proxy.cpp tcp_wrap.o $(HEADS)
+proxy.o:proxy.cpp tcp_wrap.o $(HEADS) sqlparser.hpp
 	$(CC) proxy.cpp -o proxy.o -c $(OPTS) $(WARNS)
+client.o:client.cpp
+	$(CC) client.cpp -o client.o -c $(OPTS) $(WARNS)
 
 dynamo_test.o:dynamo_test.cpp tcp_wrap.o $(HEADS)
 	$(CC) dynamo_test.cpp -o dynamo_test.o -c $(OPTS) $(WARNS)

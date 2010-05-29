@@ -38,7 +38,7 @@ static struct settings{
 mp::sync< std::set<address> > dynamo_nodes;
 mp::sync< std::set<address> > mercury_nodes;
 
-mp::sync< std::map<std::string,std::list<address> > > mercury_assign;
+mp::sync< std::map<std::string,std::map<attr_range,address> > > mercury_assign;
 
 mp::sync< std::map<uint64_t,address> > dy_hash;
 
@@ -114,7 +114,7 @@ public:
 				// FIXME: fail to create schema
 			}else{
 				create_schema_fwd_r->insert(std::pair<std::string, schema_fwd>(name, schema_fwd(org)));
-				std::list<address> assignments;
+				std::map<attr_range,address> assignments;
 				DEBUG_OUT("\nstart to assign  ");
 				for(int i=0; i<4; i++){
 					const MERDY::assign_range assign_range(OP::ASSIGN_RANGE, name, hub_it->first, hub,address(settings.myip,settings.myport));
@@ -124,11 +124,11 @@ public:
 					hub_it->second.dump();
 					DEBUG_OUT("\n");
 					++hub_it;
-					assignments.push_back(hub_it->second);
+
 					if(it == mercury_nodes_r->end()){ it = mercury_nodes_r->begin();}
 				}
-				mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
-				mercury_assign_r->insert(std::pair<std::string, std::list<address> >(name,assignments));
+				mp::sync< std::map<std::string,std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+				mercury_assign_r->insert(std::pair<std::string, std::map<attr_range,address> >(name,hub));
 			}
 			break;
 		}
@@ -246,8 +246,9 @@ public:
 			const MERDY::tellme_assign tellme_assign(obj);
 			const std::string& attrname = tellme_assign.get<1>();
 			const address& org  = tellme_assign.get<2>();
-			mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
-			std::map<std::string,std::list<address> >::iterator it = mercury_assign_r->find(attrname);
+			
+			mp::sync< std::map<std::string,std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+			std::map<std::string,std::map<attr_range,address> >::iterator it = mercury_assign_r->find(attrname);
 			
 			if(it != mercury_assign_r->end()){
 				const MERDY::assignment assignment(OP::ASSIGNMENT, attrname, it->second);

@@ -1,4 +1,6 @@
 
+#include <msgpack.hpp>
+
 // wait fowarding list
 class fwd_wait{
 public:
@@ -35,14 +37,14 @@ enum dynamo_param{
 }
 
 class value_vclock{
-	std::string value;
+	std::list<attr> value;
 	unsigned int clock;
 public:
-	value_vclock():value(""),clock(0){}
-	value_vclock(const std::string& _value, int _clock=1):value(_value),clock(_clock){}
+	value_vclock():value(),clock(0){}
+	value_vclock(const std::list<attr>& _value, int _clock=1):value(_value),clock(_clock){}
 	value_vclock(const value_vclock& org):value(org.value),clock(org.clock){}
 	
-	int update(const std::string& _value, unsigned int _clock){
+	int update(const std::list<attr>& _value, unsigned int _clock){
 		if(clock < _clock){
 			value = _value;
 			clock = _clock;
@@ -56,7 +58,7 @@ public:
 	int update(const value_vclock& newitem){
 		return update(newitem.value, newitem.clock);
 	}
-	void update(const std::string& _value){
+	void update(const std::list<attr>& _value){
 		value = _value;
 		clock++;
 		return;
@@ -64,14 +66,20 @@ public:
 	unsigned int get_clock(void)const{
 		return clock;
 	}
-	const char* c_str(void)const{
-		return value.c_str();
-	}
-	const std::string& get_string(void)const{
+	/*
+	  const char* c_str(void)const{
+	  return value.c_str();
+	  }
+	*/
+	const std::list<attr>& get_value(void)const{
 		return value;
 	}
 	void dump(void)const{
-		fprintf(stderr, "[%s]#%d ",value.c_str(),clock);
+		//std::cout << value;
+		for(std::list<attr>::const_iterator it=value.begin();it != value.end(); ++it){
+			//it->dump();
+		}
+		fprintf(stderr, "#%d ",clock);
 	}
 	MSGPACK_DEFINE(value, clock); // serialize and deserialize ok
 private:
@@ -97,8 +105,8 @@ public:
 	inline int get_cnt()const{
 		return counter;
 	}
-	inline const std::string& get_value(void)const{
-		return value_vc.get_string();
+	inline const std::list<attr>& get_value(void)const{
+		return value_vc.get_value();
 	}
 	inline const value_vclock& get_vcvalue(void)const{
 		return value_vc;

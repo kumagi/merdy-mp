@@ -32,7 +32,7 @@ static struct settings{
 
 socket_set sockets;
 
-mp::sync< std::map<std::string,std::list<address> > > mercury_assign;
+mp::sync< std::map<std::string,std::map<attr_range,address> > > mercury_assign;
 volatile int mercury_assign_flag = 0;
 volatile int schema_flag = 0;
 volatile int set_flag = 0;
@@ -79,12 +79,12 @@ public:
 		}
 		case OP::ASSIGNMENT:{
 			DEBUG_OUT("ASSIGNMENT:");
-			MERDY::assignment assignment(obj);
-			std::string& name = assignment.get<1>();
-			std::list<address>& assign = assignment.get<2>();
+			const MERDY::assignment assignment(obj);
+			const std::string& name = assignment.get<1>();
+			const std::map<attr_range,address>& assign = assignment.get<2>();
 			
-			mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
-			mercury_assign_r->insert(std::pair<std::string, std::list<address> >(name, assign));
+			mp::sync< std::map<std::string,std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+			mercury_assign_r->insert(std::pair<std::string, std::map<attr_range,address> >(name, assign));
 			
 			DEBUG_OUT("ok\n");
 			mercury_assign_flag = true;
@@ -213,12 +213,20 @@ void* testbench(void*){
 		}
 		const MERDY::set_attr set_attr((int)OP::SET_ATTR, std::string("hoge"),0, data, address(settings.myip,settings.myport));
 		
-		mp::sync< std::map<std::string, std::list<address> > >::ref mercury_assign_r(mercury_assign);
-		std::map<std::string, std::list<address> >::iterator it = mercury_assign_r->begin();
+		mp::sync< std::map<std::string, std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+		std::map<std::string, std::map<attr_range,address> >::iterator it = mercury_assign_r->begin();
 		assert(it != mercury_assign_r->end());
-		address& target(it->second.front());
+		const std::map<attr_range,address>& hub = it->second;
 		
-		tuple_send(set_attr, address(target.get_ip(),target.get_port()));
+		std::map<attr_range,address>::const_iterator target = hub.begin();
+		while(target != hub.end()){
+			if(target->first.contain(data.front().get_attr())){
+				break;
+			}
+			++target;
+		}
+		
+		tuple_send(set_attr, address(target->second.get_ip(),target->second.get_port()));
 		DEBUG_OUT("wait for set....");
 		while(!set_flag);
 		DEBUG_OUT("done.\n");
@@ -232,10 +240,10 @@ void* testbench(void*){
 		}
 		const MERDY::get_attr get_attr(OP::GET_ATTR, std::string("hoge"), 0, keys, address(settings.myip,settings.myport));
 		
-		mp::sync< std::map<std::string, std::list<address> > >::ref mercury_assign_r(mercury_assign);
-		std::map<std::string, std::list<address> >::iterator it = mercury_assign_r->begin();
+		mp::sync< std::map<std::string, std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+		std::map<std::string, std::map<attr_range,address> >::iterator it = mercury_assign_r->begin();
 		assert(it != mercury_assign_r->end());
-		address& target(it->second.front());
+		std::map<attr_range,address>& hub =  it->second;
 		tuple_send(get_attr, address(target.get_ip(),target.get_port()));
 		while(!get_flag);
 		DEBUG_OUT("get_attr done.\n");
