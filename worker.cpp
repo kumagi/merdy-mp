@@ -1,19 +1,22 @@
 #include <stdlib.h>
 #include <mp/wavy.h>
 #include <mp/sync.h>
+#include <unordered_map>
 #include <unordered_set>
 #include <msgpack.hpp>
+#include <msgpack/type/unordered_map.hpp>
 #include "hash64.h"
 #include "hash32.h"
 #include "random64.h"
 #include "tcp_wrap.h"
 #include "address.hpp"
 #include "sockets.hpp"
-#include "merdy_operations.h"
 #include <limits.h>
 #include "debug_mode.h"
+#include "merdy_operations.h"
 #include "mercury_objects.hpp"
 #include "dynamo_objects.hpp"
+
 
 
 #include <boost/program_options.hpp>
@@ -119,12 +122,14 @@ public:
 			// search coordinator, and forward
 			const MERDY::set_dy set_dy(obj);
 			const uint64_t& key = set_dy.get<1>();
-			const std::list<attr>& value = set_dy.get<2>();
+			const std::unordered_map<std::string,attr>& value = set_dy.get<2>();
 			const address& org = set_dy.get<3>();
 			
 			DEBUG(std::cout << "key[" << key << "] value[");
-			for(std::list<attr>::const_iterator it = value.begin(); it!=value.end(); ++it){
-				it->dump();
+			for(std::unordered_map<std::string,attr>::const_iterator it = value.begin(); it!=value.end(); ++it){
+				DEBUG_OUT(" [%s->",it->first.c_str());
+				DEBUG(it->second.dump());
+				DEBUG_OUT("]");
 			}
 			DEBUG(std::cout << "]" << std::endl);
 			
@@ -169,7 +174,7 @@ public:
 			DEBUG_OUT("SET_COORDINATE:");
 			MERDY::set_coordinate set_coordinate(obj);
 			const uint64_t& key = set_coordinate.get<1>();
-			const std::list<attr>& value = set_coordinate.get<2>();
+			const std::unordered_map<std::string,attr>& value = set_coordinate.get<2>();
 			const address& org = set_coordinate.get<3>();
 			mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > >::ref put_fwd_r(put_fwd);
 			put_fwd_r->insert(std::pair<uint64_t, std::pair<int, address> >(key, std::pair<int, address>(0,org)));

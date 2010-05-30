@@ -37,14 +37,14 @@ enum dynamo_param{
 }
 
 class value_vclock{
-	std::list<attr> value;
+	std::unordered_map<std::string,attr> value;
 	unsigned int clock;
 public:
 	value_vclock():value(),clock(0){}
-	value_vclock(const std::list<attr>& _value, int _clock=1):value(_value),clock(_clock){}
+	value_vclock(const std::unordered_map<std::string,attr>& _value, int _clock=1):value(_value),clock(_clock){}
 	value_vclock(const value_vclock& org):value(org.value),clock(org.clock){}
 	
-	int update(const std::list<attr>& _value, unsigned int _clock){
+	int update(const std::unordered_map<std::string,attr>& _value, unsigned int _clock){
 		if(clock < _clock){
 			value = _value;
 			clock = _clock;
@@ -58,7 +58,7 @@ public:
 	int update(const value_vclock& newitem){
 		return update(newitem.value, newitem.clock);
 	}
-	void update(const std::list<attr>& _value){
+	void update(const std::unordered_map<std::string,attr>& _value){
 		value = _value;
 		clock++;
 		return;
@@ -71,13 +71,14 @@ public:
 	  return value.c_str();
 	  }
 	*/
-	const std::list<attr>& get_value(void)const{
+	const std::unordered_map<std::string,attr>& get_value(void)const{
 		return value;
 	}
 	void dump(void)const{
-		//std::cout << value;
-		for(std::list<attr>::const_iterator it=value.begin();it != value.end(); ++it){
-			//it->dump();
+		for(std::unordered_map<std::string,attr>::const_iterator it=value.begin();it != value.end(); ++it){
+			DEBUG_OUT(" [%s->",it->first.c_str());
+			DEBUG(it->second.dump());
+			DEBUG_OUT("]");
 		}
 		fprintf(stderr, "#%d ",clock);
 	}
@@ -105,7 +106,7 @@ public:
 	inline int get_cnt()const{
 		return counter;
 	}
-	inline const std::list<attr>& get_value(void)const{
+	inline const std::unordered_map<std::string,attr>& get_value(void)const{
 		return value_vc.get_value();
 	}
 	inline const value_vclock& get_vcvalue(void)const{

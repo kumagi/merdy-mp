@@ -3,18 +3,19 @@
 #include <mp/wavy.h>
 #include <unordered_set>
 #include <msgpack.hpp>
+#include <msgpack/type/unordered_map.hpp>
 #include "hash64.h"
 #include "random64.h"
 #include "tcp_wrap.h"
 #include "address.hpp"
-#include "merdy_operations.h"
 #include "sockets.hpp"
 #include "debug_mode.h"
-#include "dynamo_objects.hpp"
+#include "merdy_operations.h"
+#include <boost/program_options.hpp>
 #include "mercury_objects.hpp"
+#include "dynamo_objects.hpp"
 #include <limits.h>
 
-#include <boost/program_options.hpp>
 
 struct schema_fwd{
 	const address org;
@@ -90,8 +91,6 @@ public:
 				first_range[0] = attr_range(attr(" "),attr("~~~~~~~~~~~~~~"));
 			}
 			
-			DEBUG_OUT("##3##\n");
-			
 			first_range[0].cut_uphalf(&first_range[2]); first_range[0].dump(); first_range[2].dump(); DEBUG_OUT("\n");
 			first_range[0].cut_uphalf(&first_range[1]); first_range[0].dump(); first_range[1].dump(); DEBUG_OUT("\n");
 			first_range[2].cut_uphalf(&first_range[3]); first_range[2].dump(); first_range[3].dump(); DEBUG_OUT("\n");
@@ -142,10 +141,13 @@ public:
 			assert(it != create_schema_fwd_r->end());
 			--it->second.cnt;
 			if(it->second.cnt == 0){
-				const MERDY::ok_create_schema ok_create_schema(OP::OK_CREATE_SCHEMA, name);
+				mp::sync< std::map<std::string,std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+				std::map<std::string,std::map<attr_range,address> >::iterator newhub = mercury_assign_r->find(name);
+				const MERDY::ok_create_schema ok_create_schema(OP::OK_CREATE_SCHEMA, name, newhub->second);
 				tuple_send(ok_create_schema, it->second.org);
 				create_schema_fwd_r->erase(name);
 			}
+			DEBUG_OUT(" %s ok.\n",name.c_str());
 			break;
 		}
 		case OP::NG_ASSIGN_RANGE:{
@@ -189,7 +191,8 @@ public:
 			DEBUG_OUT("TELLME_HASHES:");
 			const MERDY::tellme_hashes tellme_hashes(obj);
 			const address& org = tellme_hashes.get<1>();
-			
+			DEBUG_OUT("from ");
+			DEBUG(org.dump());
 			mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
 			const MERDY::update_hashes update_hashes(OP::UPDATE_HASHES,*dy_hash_r);
 			tuple_send(update_hashes,org);
@@ -246,6 +249,9 @@ public:
 			const MERDY::tellme_assign tellme_assign(obj);
 			const std::string& attrname = tellme_assign.get<1>();
 			const address& org  = tellme_assign.get<2>();
+			DEBUG_OUT(" from ");
+			DEBUG(org.dump());
+			DEBUG_OUT(" about %s \n", attrname.c_str());
 			
 			mp::sync< std::map<std::string,std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
 			std::map<std::string,std::map<attr_range,address> >::iterator it = mercury_assign_r->find(attrname);
@@ -264,7 +270,8 @@ public:
 			break;
 		}
 		default:{
-			DEBUG_OUT("illegal message");
+			DEBUG_OUT("illegal message: %d\n",operation);
+			assert(!"");
 			break;
 		}
 		}
@@ -280,7 +287,7 @@ public:
 
 					e.more();  //e.next();
 					
-					DEBUG(std::cout << "object received: " << msg << std::endl);
+					//DEBUG(std::cout << "object received: " << msg << std::endl);
 					event_handle(fd(), msg, &*z);
 					return;
 				}

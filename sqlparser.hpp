@@ -12,6 +12,9 @@ enum sql{
 	table,
 	insert,
 	into,
+	select,
+	from,
+	where,
 	data,
 	data_char,
 	data_int,
@@ -19,6 +22,14 @@ enum sql{
 	right_brac,
 	values,
 	comma,
+	op_eq,
+	op_gt,
+	op_lt,
+	op_ne,
+	op_and,
+	op_or,
+	op_star,
+	semicolon,
 	raw_int,
 	raw_char,
 	invalid,
@@ -131,7 +142,9 @@ private:
 			while(is_brank(*ptr)){++ptr;++offset;}
 			const char* origin = ptr;
 			while(1){
-				if(is_brank(*ptr) || *ptr == '\0' || *ptr == '(' || *ptr == ')' || *ptr == ','){break;}
+				if(is_brank(*ptr) || is_code(*ptr) || *ptr == '\0'){
+					break;
+				}
 				++ptr;
 			}
 			
@@ -154,6 +167,9 @@ private:
 	private:
 		bool is_brank(const char& d)const{
 			return d == ' ' || d == '\t' || d == '\n';
+		}
+		bool is_code(const char& d)const{
+			return d == ',' || d == '(' || d == ')' || d == ',' || d == '=' || d == '<' || d == '>' || d == '!' || d == '&' || d == '|' || d == '*' || d == ';'; 
 		}
 	};
 	void parse(){
@@ -181,6 +197,15 @@ private:
 			}else if(token == std::string("CHAR") || token == std::string("char")){
 				DEBUG_OUT("CHAR:");
 				parsed.push_back(segment(sql::data_char));
+			}else if(token == std::string("SELECT") || token == std::string("select")){
+				DEBUG_OUT("SELECT:");
+				parsed.push_back(segment(sql::select));
+			}else if(token == std::string("WHERE") || token == std::string("where")){
+				DEBUG_OUT("where:");
+				parsed.push_back(segment(sql::where));
+			}else if(token == std::string("FROM") || token == std::string("from")){
+				DEBUG_OUT("from:");
+				parsed.push_back(segment(sql::from));
 			}else if(token == std::string("(")){
 				DEBUG_OUT("(:");
 				parsed.push_back(segment(sql::left_brac));
@@ -190,11 +215,33 @@ private:
 			}else if(token == std::string(",")){
 				DEBUG_OUT(",:");
 				parsed.push_back(segment(sql::comma));
+			}else if(token == std::string("=")){
+				DEBUG_OUT("=:");
+				parsed.push_back(segment(sql::op_eq));
+			}else if(token == std::string(">")){
+				DEBUG_OUT(">:");
+				parsed.push_back(segment(sql::op_gt));
+			}else if(token == std::string("<")){
+				DEBUG_OUT("<:");
+				parsed.push_back(segment(sql::op_lt));
+			}else if(token == std::string("&")){
+				DEBUG_OUT("&:");
+				parsed.push_back(segment(sql::op_and));
+			}else if(token == std::string("|")){
+				DEBUG_OUT("|:");
+				parsed.push_back(segment(sql::op_or));
+			}else if(token == std::string("*")){
+				DEBUG_OUT("*:");
+				parsed.push_back(segment(sql::op_star));
+			}else if(token == std::string(";")){
+				DEBUG_OUT(";:");
+				parsed.push_back(segment(sql::semicolon));
 			}else if(token == std::string(" ")){
+				DEBUG_OUT("ok\n");
 				break;
 			}else{
 				if(!is_number(token.data(),token.length())){ // string
-					DEBUG_OUT("str[%s]",token.c_str());
+					DEBUG_OUT("str[%s]:",token.c_str());
 					parsed.push_back(segment(attr(std::string(token))));
 				}else{ // int 
 					DEBUG_OUT("int[%s]",token.c_str());

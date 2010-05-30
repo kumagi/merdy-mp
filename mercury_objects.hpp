@@ -331,6 +331,9 @@ public:
 		else if(id < rhs.id) return true;
 		else return false;
 	}
+	bool operator==(const mercury_kvp& rhs)const{
+		return data==rhs.data;
+	}
 	MSGPACK_DEFINE(id, data); // serialize and deserialize ok
 };
 

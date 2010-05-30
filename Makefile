@@ -1,6 +1,6 @@
 CC=g++44
-OPTS=-O0 -fexceptions -std=c++0x  -march=x86-64 -g
-LD=-lmpio -lmsgpack -lmsgpackc -pthread -lboost_program_options
+OPTS=-O0 -fexceptions -std=c++0x -march=x86-64 -g
+LD=-lmpio -lmsgpack -pthread -lboost_program_options
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \
 	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum
 HEADS=hash64.h hash32.h random64.h address.hpp sockets.hpp merdy_operations.h debug_mode.h dynamo_objects.hpp mercury_objects.hpp 

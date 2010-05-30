@@ -1,3 +1,4 @@
+#include <unordered_map>
 
 enum flag{
 	TYPE_OTHER = -1,
@@ -78,31 +79,33 @@ enum type{
 	STRING,
 };
 }
+
 class value_vclock;
 class address;
 class attr;
 class attr_range;
 class mercury_kvp;
 
+
 namespace MERDY{
 // * -> master
 typedef msgpack::type::tuple<int,address> add_me_dy;
 typedef msgpack::type::tuple<int,address> add_me_mer;
-typedef msgpack::type::tuple<int,std::string> ok_create_schema;
+typedef msgpack::type::tuple<int,std::string,std::map<attr_range,address> > ok_create_schema;
 typedef msgpack::type::tuple<int,std::string,address> tellme_assign;
 typedef msgpack::type::tuple<int,std::string,address> tellme_range;
 typedef msgpack::type::tuple<int,std::string> ok_assign_range;
 typedef msgpack::type::tuple<int,std::string> ng_assign_range;
 typedef msgpack::type::tuple<int,address> tellme_hashes;
 
-// master -> dynamo
+// master -> dynamo/proxy
 typedef msgpack::type::tuple<int,std::map<uint64_t,address> > update_hashes;
 
 // proxy/dynamo -> dynamo
 typedef msgpack::type::tuple<int,uint64_t,address> get_dy;
 typedef msgpack::type::tuple<int,std::set<address> > update_mer_hub;
-typedef msgpack::type::tuple<int,uint64_t,std::list<attr>,address> set_dy;
-typedef msgpack::type::tuple<int,uint64_t,std::list<attr>,address> set_coordinate;
+typedef msgpack::type::tuple<int,uint64_t,std::unordered_map<std::string,attr>,address> set_dy;
+typedef msgpack::type::tuple<int,uint64_t,std::unordered_map<std::string,attr>,address> set_coordinate;
 typedef msgpack::type::tuple<int,uint64_t,value_vclock, address> put_dy;
 typedef msgpack::type::tuple<int,uint64_t,address> send_dy;
 

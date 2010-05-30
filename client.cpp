@@ -8,8 +8,8 @@
 #include "tcp_wrap.h"
 #include "address.hpp"
 #include "sockets.hpp"
-#include "merdy_operations.h"
 
+#include "merdy_operations.h"
 #include <boost/program_options.hpp>
 #include <unordered_map>
 
