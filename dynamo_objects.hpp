@@ -17,7 +17,7 @@ public:
 	}
 	void dump(void)const{
 		target.dump();
-		fprintf(stderr,"#%lu#\n",ident);
+		fprintf(stderr,"#%llu#\n",(unsigned long long)ident);
 	}
 };
 class fwd_hash{

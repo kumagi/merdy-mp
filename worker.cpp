@@ -204,11 +204,13 @@ public:
 			std::unordered_set<address, address_hash> already_send;
 			for(int i=DY::NUM; i>0; --i){
 				const address& target = it->second;
-				DEBUG(target.dump());
-				if(already_send.find(target) == already_send.end() && target != address(settings.myip,settings.myport)){
+				if(already_send.find(target) == already_send.end()){
 					MERDY::put_dy put_dy((int)OP::PUT_DY, key, vcvalue, address(settings.myip,settings.myport));
+					DEBUG_OUT("%llu ->",(unsigned long long)key);
+					vcvalue.dump();
 					tuple_send(put_dy, target);
-					
+					DEBUG(target.dump());
+					DEBUG_OUT("\n");
 					already_send.insert(target);
 				}else {
 					++i;
@@ -238,12 +240,12 @@ public:
 			if(it == key_value_r->end()){
 				// new insert
 				key_value_r->insert(std::pair<uint64_t, value_vclock>(key, value_vclock(value)));
-				DEBUG_OUT("saved:%lu-> ",key);
+				DEBUG_OUT("saved:%llu-> ",(unsigned long long)key);
 				DEBUG(value.dump(););
 				DEBUG_OUT(" new!\n");
 			}else{
 				it->second.update(value.get_value());
-				DEBUG_OUT("saved:%lu->",key);
+				DEBUG_OUT("saved:%llu->",(unsigned long long)key);
 				DEBUG(value.dump(););
 				DEBUG_OUT("\n");
 			}
@@ -265,7 +267,7 @@ public:
 			++(it->second.first);
 			if(it->second.first == DY::WRITE){
 				// write ok
-				DEBUG_OUT("write ok:[%lu]\n",key);
+				DEBUG_OUT("write ok:[%llu]\n",(unsigned long long)key);
 				MERDY::ok_set_dy ok_set_dy(OP::OK_SET_DY, key);
 				tuple_send(ok_set_dy,it->second.second);
 			}else if(it->second.first == DY::NUM){
@@ -310,7 +312,7 @@ public:
 				}
 			}
 			
-			DEBUG_OUT("key:%lu\n",key);
+			DEBUG_OUT("key:%llu\n",(unsigned long long)key);
 			break;
 		}
 		case OP::SEND_DY:{
@@ -344,10 +346,10 @@ public:
 			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
 			std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
 			if(it == send_fwd_r->end()){
-				DEBUG_OUT("%lu already answered\n", key);
+				DEBUG_OUT("%llu already answered\n", (unsigned long long)key);
 				
 				for(std::unordered_multimap<uint64_t, get_fwd_t>::iterator it=send_fwd_r->begin();it != send_fwd_r->end(); ++it){
-					fprintf(stderr,"key[%lu],",it->first);
+					fprintf(stderr,"key[%llu],",(unsigned long long)it->first);
 				}
 				break;
 			}
@@ -383,7 +385,7 @@ public:
 			MERDY::notfound_dy notfound_dy(obj);
 			const uint64_t& key = notfound_dy.get<1>();
 			const address& org = notfound_dy.get<2>();
-			DEBUG_OUT("for %lu\n",key);
+			DEBUG_OUT("for %llu\n",(unsigned long long)key);
 			
 			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
 			std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
@@ -444,10 +446,10 @@ public:
 				int ok=0;
 				while(it_mi != mer_node_r->end() && it_mi->first == name){
 					if(it_mi->second.get_range().contain(it->id)){
-						it_mi->second.kvp.insert(std::pair<attr,int>(it->id,it->data));
+						it_mi->second.kvp.insert(std::pair<attr,uint64_t>(it->id,it->data));
 						ok = 1;
 						it->id.dump();
-						DEBUG_OUT("%lu inserted in  and %lu entries in",it->data, it_mi->second.kvp.size());
+						DEBUG_OUT("%llu inserted in  and %lu entries in",(unsigned long long)it->data, it_mi->second.kvp.size());
 						DEBUG(it_mi->second.get_range().dump());
 						DEBUG_OUT("\n");
 						break;
@@ -652,7 +654,7 @@ public:
 						if(found_kvp != kvp.end()){
 							ans.push_back(mercury_kvp(found_kvp->first,found_kvp->second));
 							found_kvp->first.dump();
-							DEBUG_OUT(" -> %lu ok\n", found_kvp->second);
+							DEBUG_OUT(" -> %llu ok\n", (unsigned long long)found_kvp->second);
 							break;
 						}
 						req->dump();

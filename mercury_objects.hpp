@@ -25,9 +25,9 @@ public:
 	enum flag{
 		number = 0,
 		string = 1,
-		invalid = 2,
+		//invalid = 2,
 	};
-	attr():num(),str(),num_or_str(invalid){};
+	attr():num(0),str(std::string("")),num_or_str(num){};
 	explicit attr(int _num):num(_num),str(),num_or_str(number){};
 	explicit attr(const std::string& _str):num(),str(_str),num_or_str(string){}
 	attr(const attr& org):num(org.num),str(org.str),num_or_str(org.num_or_str){}
@@ -50,9 +50,23 @@ public:
 	bool is_string()const{
 		return num_or_str == string;
 	}
-	bool is_invalid()const{
-		return number == invalid;
+	void maximize(){
+		if(num_or_str == number){
+			num = INT_MAX;
+		}else{
+			str = std::string("~~~~~~~~~");
+		}
 	}
+	void minimize(){
+		if(num_or_str == number){
+			num = INT_MIN;
+		}else{
+			str = std::string(" ");
+		}
+	}
+	//bool is_invalid()const{
+	//	return number == invalid;
+	//}
 	int get_type()const{
 		return num_or_str;
 	}
@@ -66,27 +80,15 @@ public:
 	}
 	attr get_middle(const attr& rhs)const{
 		// assertion: rhs is bigger than me
-		if(is_invalid()){
-			assert(!rhs.is_invalid());
-			if(rhs.is_int()){
-				return attr(rhs.num + INT_MIN / 2);
-			}else{
-				return attr(get_strhalf(" ",rhs.get_string()));
-			}
-		}else if(rhs.is_invalid()){
-			if(is_int()){
-				return attr(num + INT_MAX / 2);
-			}else{
-				return attr(get_strhalf(get_string(),"~~~~~~~~~~~~~~"));
-			}
-		}else if(is_int()){
+		if(is_int()){
 			return attr((num>>1) + (rhs.num>>1));
 		}else{
 			return attr(get_strhalf(str, rhs.get_string()));
 		}
 	}
 	bool operator<(const attr& rhs)const{
-		assert(num_or_str == rhs.num_or_str);
+		//assert(num_or_str == rhs.num_or_str);
+		
 		if(num_or_str == number){return num < rhs.num;}
 		else if(num_or_str == string){return str < rhs.str;}else{
 			assert(!"invalid comparison");
@@ -163,9 +165,11 @@ public:
 			half->end = attr();
 		}
 	}
-	bool is_invalid()const{
-		return begin.is_invalid() && end.is_invalid();
-	}  
+	/*
+	  bool is_invalid()const{
+	  return begin.is_invalid() && end.is_invalid();
+	  } 
+	*/ 
 	void get_up_from(const attr& border, attr_range* half)const{
 		assert(contain(border));
 		assert(!(border == begin));
@@ -223,19 +227,12 @@ public:
 		begin = middle;
 	}
 	bool contain(const attr& atr)const{
-		if(begin.is_invalid()){
-			return atr < end || (left_closed && atr == end);
-		}else if(end.is_invalid()){
-			return begin < atr || (right_closed && atr == begin);
-		}else{
-			return (begin < atr && atr < end) ||
-				(left_closed && atr == begin) ||
-				(right_closed && atr == end);
-		}
+		return (begin < atr && atr < end) ||
+			(left_closed && atr == begin) ||
+			(right_closed && atr == end);
 	}
 	
 	bool contain(const attr_range& range)const{
-		assert(!is_invalid() || !range.is_invalid());
 		return contain(range.begin) || contain(range.end) ||
 			(range.begin < begin && end < range.end);
 	}
@@ -323,7 +320,7 @@ public:
 	}
 	void dump()const{
 		id.dump();
-		fprintf(stderr," -> %lu ",data);
+		fprintf(stderr," -> %llu",(unsigned long long)data);
 	}
 	bool operator<(const mercury_kvp& rhs)const{
 		if(data < rhs.data)return true;

@@ -71,7 +71,6 @@ int main(int argc, char** argv){
 		settings.verbose++;
 	}
 	settings.targetip = aton(target.c_str());
-
 	
 	// view options
 	printf("verbose:%d\naddress:[%s]\n",
@@ -94,11 +93,16 @@ int main(int argc, char** argv){
 		connect_ip_port(targetfd, settings.targetip,settings.targetport);
 		{
 			file_ptr fp(fopen("testdata.txt","r"));
+			int fd = sockets.get_socket(address(settings.targetip,settings.targetport));
 			while(fgets(buff,256,fp.get())){
 				std::string sql = std::string(buff);
 				const msgpack::type::tuple<int,std::string> do_sql(OP::DO_SQL,sql);
 				tuple_send(do_sql,address(settings.targetip,settings.targetport));
+				char buff[1024];
+				int readsize = read(fd, buff, 1024);
+				buff[readsize] = '\0';
+				fprintf(stderr,"%s ",buff);
 			}
 		}
 	}
-} 
+}
