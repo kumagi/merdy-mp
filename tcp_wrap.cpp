@@ -149,10 +149,39 @@ int get_myip(void){
 
 int get_myip_interface(const char* const name){
 	struct ifreq ifr;
-	int fd=socket(AF_INET, SOCK_DGRAM,0);
+	int fd=socket(AF_INET, SOCK_STREAM,0);
+	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_addr.sa_family = AF_INET;
 	strncpy(ifr.ifr_name,name,IFNAMSIZ-1);
-	ioctl(fd,SIOCGIFADDR,&ifr);
+	if(ioctl(fd,SIOCGIFADDR,&ifr) < 0){
+		perror("ioctl(SIOCGIFADDR)");
+		exit(1);
+	}
 	close(fd);
 	return (int)((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr.s_addr;
+}
+
+
+unsigned int get_myip_interface2(const char* const name){
+	struct ifreq ifr;
+	struct sockaddr_in sin;
+	int fd=socket(AF_INET, SOCK_STREAM,0);
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_addr.sa_family = AF_INET;
+	
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, name);
+	if(ioctl(fd, SIOCGIFADDR, &ifr) < 0){
+		perror("ioctl(SIOCGIFADDR)");exit(1);
+	}
+	if(ioctl(fd, SIOCGIFADDR, &ifr) < 0){
+		perror("ioctl(SIOCGIFADDR)");exit(1);
+	}
+	if(ifr.ifr_addr.sa_family == AF_INET){
+		memcpy(&sin, &(ifr.ifr_addr), sizeof(struct sockaddr_in));
+	}else{
+		exit(1);
+	}
+	close(fd);
+	return sin.sin_addr.s_addr;
 }

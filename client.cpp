@@ -72,7 +72,7 @@ int main(int argc, char** argv){
 	if(vm.count("verbose")){
 		settings.verbose++;
 	}
-	settings.myip = get_myip_interface(settings.interface.c_str());
+	settings.myip = get_myip_interface2(settings.interface.c_str());
 	settings.targetip = aton(target.c_str());
 	
 	// view options

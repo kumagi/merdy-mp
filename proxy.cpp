@@ -1124,7 +1124,7 @@ int main(int argc, char** argv){
 	if(settings.masterip != aton("127.0.0.1") || settings.myport != settings.masterport){
 		settings.i_am_master = 0;
 	}
-	settings.myip = get_myip_interface(settings.interface.c_str());
+	settings.myip = get_myip_interface2(settings.interface.c_str());
 	settings.mercury_cnt=0;
 	settings.hub_cond_waiting = PTHREAD_COND_INITIALIZER;
 	settings.hashes_cond_waiting = PTHREAD_COND_INITIALIZER;
