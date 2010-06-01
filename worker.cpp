@@ -207,7 +207,7 @@ public:
 				if(already_send.find(target) == already_send.end()){
 					MERDY::put_dy put_dy((int)OP::PUT_DY, key, vcvalue, address(settings.myip,settings.myport));
 					DEBUG_OUT("%llu ->",(unsigned long long)key);
-					vcvalue.dump();
+					DEBUG(vcvalue.dump());
 					tuple_send(put_dy, target);
 					DEBUG(target.dump());
 					DEBUG_OUT("\n");
@@ -349,7 +349,7 @@ public:
 				DEBUG_OUT("%llu already answered\n", (unsigned long long)key);
 				
 				for(std::unordered_multimap<uint64_t, get_fwd_t>::iterator it=send_fwd_r->begin();it != send_fwd_r->end(); ++it){
-					fprintf(stderr,"key[%llu],",(unsigned long long)it->first);
+					DEBUG_OUT("key[%llu],",(unsigned long long)it->first);
 				}
 				break;
 			}
@@ -448,7 +448,7 @@ public:
 					if(it_mi->second.get_range().contain(it->id)){
 						it_mi->second.kvp.insert(std::pair<attr,uint64_t>(it->id,it->data));
 						ok = 1;
-						it->id.dump();
+						DEBUG(it->id.dump());
 						DEBUG_OUT("%llu inserted in  and %lu entries in",(unsigned long long)it->data, it_mi->second.kvp.size());
 						DEBUG(it_mi->second.get_range().dump());
 						DEBUG_OUT("\n");
@@ -531,6 +531,8 @@ public:
 			const int& identifier = get_range.get<2>();
 			const attr_range& range = get_range.get<3>();
 			const address& org = get_range.get<4>();
+			DEBUG_OUT(" for %s. range is",name.c_str());
+			DEBUG(range.dump());
 			
 			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
 			std::unordered_multimap<std::string, mercury_instance>::iterator it_mi = mer_node_r->find(name);
@@ -543,6 +545,7 @@ public:
 			std::list<mercury_kvp> answer;
 			if(myrange.contain(range)){
 				std::map<attr, uint64_t>::iterator it = key_value.lower_bound(range.get_begin());
+				DEBUG_OUT(" ");
 				while(it != key_value.end() && range.contain(it->first)){
 					answer.push_back(mercury_kvp(it->first,it->second));
 					++it;
@@ -561,7 +564,7 @@ public:
 						
 						fwd.push_back(std::pair<address,attr_range>(i->second,common));
 						counter++;
-						i->first.dump();
+						DEBUG(i->first.dump());
 						DEBUG_OUT("range foward!\n");
 						break;
 					}
@@ -592,7 +595,7 @@ public:
 			}else{
 				const MERDY::ok_get_range ok_get_range(OP::OK_GET_RANGE, name, identifier, answer);
 				tuple_send(ok_get_range, org);
-				org.dump();
+				DEBUG(org.dump());
 				DEBUG_OUT("not fowarded\n");
 			}
 			break;
@@ -653,11 +656,11 @@ public:
 						const std::map<attr, uint64_t>::const_iterator found_kvp = kvp.find(*req);
 						if(found_kvp != kvp.end()){
 							ans.push_back(mercury_kvp(found_kvp->first,found_kvp->second));
-							found_kvp->first.dump();
+							DEBUG(found_kvp->first.dump());
 							DEBUG_OUT(" -> %llu ok\n", (unsigned long long)found_kvp->second);
 							break;
 						}
-						req->dump();
+						DEBUG(req->dump());
 						DEBUG_OUT("not found. for %lu entries\n", kvp.size());
 					}
 					++it;
@@ -710,7 +713,7 @@ public:
 			}else if(!ans.empty()){
 				const MERDY::ok_get_attr ok_get_attr(OP::OK_GET_ATTR, name, identifier, ans);
 				tuple_send(ok_get_attr, org);
-				org.dump();
+				DEBUG(org.dump());
 				DEBUG_OUT("sending OK_GET_ATTR \n");
 			}else{
 				const MERDY::ng_get_attr ng_get_attr(OP::NG_GET_ATTR, name, identifier);
@@ -743,7 +746,7 @@ public:
 			if(it->second->cnt == 0){
 				MERDY::ok_get_attr ok_get_attr(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
 				tuple_send(ok_get_attr, it->second->org);
-				it->second->org.dump();
+				DEBUG(it->second->org.dump());
 				delete it->second;
 				mer_get_fwds_r->erase(it);
 				DEBUG_OUT("sending OK_GET_ATTR\n");
@@ -891,7 +894,7 @@ public:
 
 void on_accepted(int fd, int err, mp::wavy::loop* lo)
 {
-	fprintf(stderr,"accept %d %d\n",fd,err);
+	DEBUG_OUT("accept %d %d\n",fd,err);
 	if(fd < 0) {
 		perror("accept error");
 		exit(1);

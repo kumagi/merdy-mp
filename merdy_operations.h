@@ -63,6 +63,7 @@ enum merdy_operations{
 	
 	// master -> proxy
 	OK_CREATE_SCHEMA,
+	NG_CREATE_SCHEMA,
 	ASSIGNMENT, // int, std::string, std::list<address> 
 	NO_ASSIGNMENT, // int, std::string
 	
@@ -92,6 +93,7 @@ namespace MERDY{
 typedef msgpack::type::tuple<int,address> add_me_dy;
 typedef msgpack::type::tuple<int,address> add_me_mer;
 typedef msgpack::type::tuple<int,std::string,std::map<attr_range,address> > ok_create_schema;
+typedef msgpack::type::tuple<int,std::string> ng_create_schema;
 typedef msgpack::type::tuple<int,std::string,address> tellme_assign;
 typedef msgpack::type::tuple<int,std::string,address> tellme_range;
 typedef msgpack::type::tuple<int,std::string> ok_assign_range;

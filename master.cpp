@@ -71,6 +71,17 @@ public:
 			const int& type = create_schema.get<2>();
 			const address& org = create_schema.get<3>();
 			
+			{
+				mp::sync< std::map<std::string,std::map<attr_range,address> > >::ref mercury_assign_r(mercury_assign);
+				if(mercury_assign_r->find(name) != mercury_assign_r->end()){
+					fprintf(stderr,"error: attribute [%s] already exists.\n",name.c_str());
+					
+					const MERDY::ng_create_schema ng_create_schema(OP::NG_CREATE_SCHEMA, name);
+					tuple_send(ng_create_schema, org);
+					break;
+				}
+			}
+			
 			mp::sync< std::set<address> >::ref mercury_nodes_r(mercury_nodes);
 			std::set<address>::const_iterator it = mercury_nodes_r->begin();
 			int random_loop = rand()%mercury_nodes_r->size();
@@ -91,12 +102,13 @@ public:
 				first_range[0] = attr_range(attr(" "),attr("~~~~~~~~~~~~~~"));
 			}
 			
-			first_range[0].cut_uphalf(&first_range[2]); first_range[0].dump(); first_range[2].dump(); DEBUG_OUT("\n");
-			first_range[0].cut_uphalf(&first_range[1]); first_range[0].dump(); first_range[1].dump(); DEBUG_OUT("\n");
-			first_range[2].cut_uphalf(&first_range[3]); first_range[2].dump(); first_range[3].dump(); DEBUG_OUT("\n");
+			first_range[0].cut_uphalf(&first_range[2]);
+			first_range[0].cut_uphalf(&first_range[1]);
+			first_range[2].cut_uphalf(&first_range[3]);
+			
 			
 			for(int i=0;i<4;i++){
-				first_range[i].dump();
+				DEBUG(first_range[i].dump());
 			}
 			
 			// setting hub
@@ -118,9 +130,9 @@ public:
 				for(int i=0; i<4; i++){
 					const MERDY::assign_range assign_range(OP::ASSIGN_RANGE, name, hub_it->first, hub,address(settings.myip,settings.myport));
 					tuple_send(assign_range, hub_it->second);
-					hub_it->first.dump();
+					DEBUG(hub_it->first.dump());
 					DEBUG_OUT(" -> ");
-					hub_it->second.dump();
+					DEBUG(hub_it->second.dump());
 					DEBUG_OUT("\n");
 					++hub_it;
 
@@ -204,7 +216,7 @@ public:
 			const MERDY::add_me_dy add_me_dy(obj);
 			const address& newnode = add_me_dy.get<1>();
 			
-			newnode.dump();
+			DEBUG(newnode.dump());
 			
 			mp::sync< std::set<address> >::ref dynamo_nodes_r(dynamo_nodes);
 			dynamo_nodes_r->insert(newnode);
@@ -227,7 +239,7 @@ public:
 			while(it != dynamo_nodes_r->end()){
 				tuple_send(update_hashes,*it);
 				DEBUG_OUT("send to ");
-				it->dump();
+				DEBUG(it->dump());
 				++it;
 			}
 			break;

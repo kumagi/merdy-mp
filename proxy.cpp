@@ -52,8 +52,8 @@ address search_address(uint64_t key){
 				++it;
 				continue;
 			}
-			fprintf(stderr,"%llu->",(unsigned long long)it->first);
-			it->second.dump();
+			DEBUG_OUT("%llu->",(unsigned long long)it->first);
+			DEBUG(it->second.dump());
 			break;
 		}
 		assert(!"arien");
@@ -241,8 +241,114 @@ public:
 	virtual std::list<mercury_request_fowards> get_unsolved()const = 0;
 	virtual void dump()const = 0;
 	virtual bool is_resolved() const = 0;
+	virtual ~statement() = 0;
+	statement():hashes(){}
 };
+statement::~statement(){};
 
+class node: public statement{
+public:
+	const std::string name;
+	const int identifier;
+	const int op;
+	const attr cond;
+	node(const std::string& _name, const int _identifier, const int& _op, const attr& _cond)
+		:name(_name),identifier(_identifier),op(_op),cond(_cond){};
+	~node(){};
+	void resolve(){
+		if(!this->hashes.empty()){
+			return;
+		}
+		if(op == sqlparser::sql::op_eq){
+			std::list<attr> request;
+			request.push_back(cond);
+			MERDY::get_attr get_attr(OP::GET_ATTR,name, identifier,request,address(settings.myip,settings.myport));
+			if(!mercury_send(name, cond,get_attr)){
+				mp::sync< std::unordered_multimap<std::string, std::pair<attr,MERDY::get_attr> > >::ref suspended_select_get_attr_r(suspended_select_get_attr);
+				suspended_select_get_attr_r->insert(std::pair<std::string, std::pair<attr,MERDY::get_attr> >(name, std::pair<attr,MERDY::get_attr>(cond, get_attr)));	// 
+			}
+		}else if(op == sqlparser::sql::op_gt){
+			MERDY::get_range get_range(OP::GET_RANGE,name, identifier, attr_range(cond,attr()), address(settings.myip,settings.myport));
+			if(!mercury_send(name, cond,get_range)){
+				mp::sync< std::unordered_multimap<std::string, std::pair<attr,MERDY::get_range> > >::ref suspended_select_get_range_r(suspended_select_get_range);
+				suspended_select_get_range_r->insert(std::pair<std::string, std::pair<attr,MERDY::get_range> >(name, std::pair<attr,MERDY::get_range>(cond, get_range)));
+			}
+		}else if(op == sqlparser::sql::op_lt){
+			MERDY::get_range get_range(OP::GET_RANGE,name, identifier, attr_range(attr(),cond), address(settings.myip,settings.myport));
+			if(!mercury_send(name, cond,get_range)){
+				mp::sync< std::unordered_multimap<std::string, std::pair<attr,MERDY::get_range> > >::ref suspended_select_get_range_r(suspended_select_get_range);
+				suspended_select_get_range_r->insert(std::pair<std::string, std::pair<attr,MERDY::get_range> >(name, std::pair<attr,MERDY::get_range>(cond, get_range)));
+			}
+		}else{
+			assert(!"unsupported operation");
+		}
+	}
+	bool is_resolved()const{
+		return !this->hashes.empty();
+	}
+	std::list<mercury_request_fowards> get_unsolved()const {
+		std::list<mercury_request_fowards> unsolved;
+		if(this->hashes.empty()){
+			unsolved.push_back(mercury_request_fowards(name,identifier));
+		}
+		return unsolved;
+	}
+	void dump()const{
+		fprintf(stderr,"id:%d[%s ", identifier,name.c_str());
+		switch (op){
+		case sqlparser::sql::op_eq:{
+			fprintf(stderr,"=");
+			break;
+		}
+		case sqlparser::sql::op_gt:{
+			fprintf(stderr,">");
+			break;
+		}
+		case sqlparser::sql::op_lt:{
+			fprintf(stderr,"<");
+			break;
+		}
+		default:{
+			assert(!"arienai");
+			break;
+		}
+		}
+		cond.dump();
+		fprintf(stderr,"] ");
+		
+		std::list<mercury_kvp>::const_iterator hash_it = hashes.begin();
+		while(hash_it != hashes.end()){
+			fprintf(stderr,"{%lu}",hash_it->get_data());
+			++hash_it;
+		}
+		fprintf(stderr,"\n");
+	}
+	bool execute(const std::string& _name, const int _identifier,const std::list<mercury_kvp>& _list){
+		if(!this->hashes.empty()){
+			return true;
+		}
+		if(name == _name && identifier == _identifier){
+			DEBUG_OUT("matched for %lu items %s:%d == %s:%d",_list.size(), name.c_str(),identifier, _name.c_str(),_identifier);
+			std::list<mercury_kvp>::const_iterator it = _list.begin();
+			while(it != _list.end()){
+				DEBUG(it->dump());
+				DEBUG_OUT("\n");
+				++it;
+			}
+			this->hashes = _list;
+			this->hashes.sort();
+			this->hashes.unique();
+			DEBUG_OUT(" exe done.\n");
+			return true;
+		}else{
+			DEBUG_OUT("not matched for %lu items %s:%d != %s:%d",_list.size(), name.c_str(),identifier, _name.c_str(),_identifier);
+		}
+		DEBUG_OUT(" exe done.\n");
+		return false;
+	}
+public:
+	node();
+};
 class binary: public statement{
 public:
 	statement* lhs;
@@ -250,11 +356,20 @@ public:
 	statement* rhs;
 	binary(statement* _lhs, int _op, statement* _rhs)
 		:lhs(_lhs),op(_op),rhs(_rhs){}
+	~binary(){
+		delete lhs;
+		delete rhs;
+	}
 	void resolve(){
+		DEBUG_OUT("! left and right resolve! !\n");
 		lhs->resolve();
 		rhs->resolve();
 	}
 	std::list<mercury_request_fowards> get_unsolved()const {
+		if(!this->hashes.empty()){
+			std::list<mercury_request_fowards> empty;
+			return empty;
+		}
 		std::list<mercury_request_fowards> rhs_unsolved = rhs->get_unsolved();
 		std::list<mercury_request_fowards> lhs_unsolved = lhs->get_unsolved();
 		rhs_unsolved.merge(lhs_unsolved);
@@ -286,9 +401,14 @@ public:
 		if(!this->hashes.empty()){
 			return true;
 		}
-		if(lhs->execute(_name,_identifier,_list) == false || rhs->execute(_name,_identifier,_list) == false){
+		
+		lhs->execute(_name,_identifier,_list);
+		rhs->execute(_name,_identifier,_list);
+		if(!lhs->is_resolved() || !rhs->is_resolved()){
 			return false;
 		}
+		
+		DEBUG_OUT("left and right solved!\n");
 		std::list<mercury_kvp>::iterator it = hashes.begin();
 		if(op == sqlparser::sql::op_and){
 			std::list<mercury_kvp>::iterator lhs_it = lhs->hashes.begin();
@@ -302,13 +422,25 @@ public:
 			}
 			delete lhs;
 			delete rhs;
+			lhs =  NULL;
+			rhs =  NULL;
 			this->hashes.sort();
+			std::list<mercury_kvp>::iterator hashes_it = this->hashes.begin();
+			DEBUG_OUT("marged[");
+			while(hashes_it != hashes.end()){
+				DEBUG(hashes_it->dump());
+				++hashes_it;
+				DEBUG_OUT(",");
+			}
+			DEBUG_OUT("]\n");
 			return true;
 		}else if(op == sqlparser::sql::op_or){
 			this->hashes.merge(lhs->hashes);
 			this->hashes.merge(rhs->hashes);
 			delete lhs;
 			delete rhs;
+			lhs = NULL;
+			rhs = NULL;
 			this->hashes.sort();
 			this->hashes.unique();
 			return true;
@@ -318,97 +450,14 @@ public:
 	}
 };
 /*
-class unary: public statement{
-public:
-	int op;
-	statement* target;
-	std::list<uint64_t> hashes;
-	bool execute(const std::string& _name, const int _identifier,const std::list<mercury_kvp>& _list){};
-};
+  class unary: public statement{
+  public:
+  int op;
+  statement* target;
+  std::list<uint64_t> hashes;
+  bool execute(const std::string& _name, const int _identifier,const std::list<mercury_kvp>& _list){};
+  };
 */
-class node: public statement{
-public:
-	const std::string name;
-	const int identifier;
-	const int op;
-	const attr cond;
-	node(const std::string& _name, const int _identifier, const int& _op, const attr& _cond)
-		:name(_name),identifier(_identifier),op(_op),cond(_cond){};
-	void resolve(){
-		if(!this->hashes.empty()){
-			return;
-		}
-		if(op == sqlparser::sql::op_eq){
-			std::list<attr> request;
-			request.push_back(cond);
-			MERDY::get_attr get_attr(OP::GET_ATTR,name, identifier,request,address(settings.myip,settings.myport));
-			if(!mercury_send(name, cond,get_attr)){
-				mp::sync< std::unordered_multimap<std::string, std::pair<attr,MERDY::get_attr> > >::ref suspended_select_get_attr_r(suspended_select_get_attr);
-				suspended_select_get_attr_r->insert(std::pair<std::string, std::pair<attr,MERDY::get_attr> >(name, std::pair<attr,MERDY::get_attr>(cond, get_attr)));	// 
-			}
-		}else if(op == sqlparser::sql::op_gt){
-			MERDY::get_range get_range(OP::GET_RANGE,name, identifier, attr_range(cond,attr()), address(settings.myip,settings.myport));
-			if(!mercury_send(name, cond,get_range)){
-				mp::sync< std::unordered_multimap<std::string, std::pair<attr,MERDY::get_range> > >::ref suspended_select_get_range_r(suspended_select_get_range);
-				suspended_select_get_range_r->insert(std::pair<std::string, std::pair<attr,MERDY::get_range> >(name, std::pair<attr,MERDY::get_range>(cond, get_range)));
-			}
-			mercury_send(name, cond,get_range);
-		}else if(op == sqlparser::sql::op_lt){
-			MERDY::get_range get_range(OP::GET_RANGE,name, identifier, attr_range(attr(),cond), address(settings.myip,settings.myport));
-			if(!mercury_send(name, cond,get_range)){
-				mp::sync< std::unordered_multimap<std::string, std::pair<attr,MERDY::get_range> > >::ref suspended_select_get_range_r(suspended_select_get_range);
-				suspended_select_get_range_r->insert(std::pair<std::string, std::pair<attr,MERDY::get_range> >(name, std::pair<attr,MERDY::get_range>(cond, get_range)));
-			}
-		}else{
-			assert(!"unsupported operation");
-		}
-	}
-	bool is_resolved()const{
-		return !this->hashes.empty();
-	}
-	std::list<mercury_request_fowards> get_unsolved()const {
-		std::list<mercury_request_fowards> unresolved;
-		if(this->hashes.empty()){
-			unresolved.push_back(mercury_request_fowards(name,identifier));
-		}
-			return unresolved;
-	}
-	void dump()const{
-		fprintf(stderr,"id:%d[%s ", identifier,name.c_str());
-		switch (op){
-		case sqlparser::sql::op_eq:{
-			fprintf(stderr,"=");
-			break;
-		}
-		case sqlparser::sql::op_gt:{
-			fprintf(stderr,">");
-			break;
-		}
-		case sqlparser::sql::op_lt:{
-			fprintf(stderr,"<");
-			break;
-		}
-		default:{
-			assert(!"arienai");
-			break;
-		}
-		}
-		cond.dump();
-		fprintf(stderr,"]\n");
-	}
-	bool execute(const std::string& _name, const int _identifier,const std::list<mercury_kvp>& _list){
-		if(!this->hashes.empty()){
-			return true;
-		}
-		if(name == _name && identifier == _identifier){
-			this->hashes = _list;
-			return true;
-		}
-		this->hashes.sort();
-		this->hashes.unique();
-		return false;
-	};
-};
 
 node* term(sqlparser::query* sql){
 	if(sql->get().is_data()){
@@ -422,10 +471,12 @@ node* term(sqlparser::query* sql){
 	}else{
 		assert(!"operation not supported");
 	}
+	return NULL;
 }
 statement* expression(sqlparser::query* sql){
 	node* lhs = term(sql);
 	if(sql->next() == true){
+		DEBUG(lhs->dump());
 		int op = sql->get().get_query();
 		sql->next();
 		node* rhs = term(sql);
@@ -456,6 +507,9 @@ public:
 			std::list<std::string>::iterator names_it = select_names.begin();
 			while(names_it != select_names.end()){
 				const std::unordered_map<std::string,attr>::const_iterator ans_node = data.find(*names_it);
+				if(ans_node == data.end()){
+					DEBUG_OUT("%s not found",names_it->c_str());
+					break;}
 				if(ans_node->second.is_int()){
 					char tmpbuff[256];
 					sprintf(tmpbuff,"%d",ans_node->second.get_int());
@@ -474,6 +528,7 @@ public:
 			}
 		}
 		DEBUG_OUT("%s\n------------------", answer.c_str());
+		answer += std::string("\nselected.\n");
 		write(org_fd,answer.data(),answer.length());
 	}
 private:
@@ -703,11 +758,11 @@ public:
 				while(unsolved_it != unsolved.end()){
 					suspending_selects_r->insert(std::pair<mercury_request_fowards, std::shared_ptr<sql_select_workingset> >(*unsolved_it, work_p));
 					DEBUG_OUT("send for ");
-					unsolved_it->dump();
+					DEBUG(unsolved_it->dump());
 					DEBUG_OUT("\n");
 					++unsolved_it;
 				}
-				work_p->dump();
+				DEBUG(work_p->dump());
 				work_p->statements.front()->resolve();
 			}else{
 				DEBUG_OUT("invalid message\n");
@@ -724,6 +779,17 @@ public:
 			DEBUG_OUT("%s\n",name.c_str());
 			mp::sync< std::unordered_map<std::string,std::map<attr_range,address> > >::ref mer_hubs_r(mer_hubs);
 			mer_hubs_r->insert(std::pair<std::string, std::map<attr_range,address> >(name,newhub));
+			
+			{ // answer to client
+				mp::sync< std::unordered_multimap<std::string, std::shared_ptr<sql_answer> > >::ref sql_create_table_r(sql_create_table);
+				sql_create_table_r->erase(name);
+			}
+			break;
+		}
+		case OP::NG_CREATE_SCHEMA:{
+			DEBUG_OUT("NG_CREATE_SCHEMA:");
+			const MERDY::ng_create_schema ng_create_schema(obj);
+			const std::string& name = ng_create_schema.get<1>();
 			
 			{ // answer to client
 				mp::sync< std::unordered_multimap<std::string, std::shared_ptr<sql_answer> > >::ref sql_create_table_r(sql_create_table);
@@ -821,7 +887,7 @@ public:
 			mp::sync< std::unordered_multimap<uint64_t, std::shared_ptr<sql_answer> > >::ref 
 				sql_insert_into_dynamo_r(sql_insert_into_dynamo);
 			std::unordered_multimap<uint64_t, std::shared_ptr<sql_answer> >::iterator it = sql_insert_into_dynamo_r->find(key);
-			it->second->buff += std::string("done.");
+			it->second->buff += std::string("set ok.\n");
 			sql_insert_into_dynamo_r->erase(key);
 			
 			DEBUG_OUT("key:%llu ok.\n",(unsigned long long)key);
@@ -833,7 +899,7 @@ public:
 			const uint64_t& key = found_dy.get<1>();
 			const value_vclock& value = found_dy.get<2>();
 			//const address& org = found_dy.get<3>();
-			value.dump();
+			DEBUG(value.dump());
 			DEBUG_OUT("\n");
 			{
 				mp::sync< std::unordered_multimap<uint64_t, std::shared_ptr<sql_select_dynamo> > >::ref
@@ -896,6 +962,7 @@ public:
 			mp::sync< std::multimap<mercury_request_fowards, std::shared_ptr<sql_select_workingset> > >::ref suspending_selects_r(suspending_selects);
 			std::multimap<mercury_request_fowards, std::shared_ptr<sql_select_workingset> >::iterator req_it = suspending_selects_r->find(mercury_request_fowards(name,identifier));
 			req_it->second->execute(name,identifier,ans);
+			suspending_selects_r->erase(mercury_request_fowards(name,identifier));
 			
 			break;
 		}
@@ -906,33 +973,21 @@ public:
 			const int& identifier = ok_get_range.get<2>();
 			const std::list<mercury_kvp>& ans = ok_get_range.get<3>();
 			
-			std::list<mercury_kvp>::const_iterator ans_it = ans.begin();
-			while(ans_it != ans.end()){
-				DEBUG(ans_it->dump());
-				++ans_it;
-			}
-			DEBUG_OUT(" range done for %lu items.\n", ans.size());
 			/*
-			  std::list<mercury_kvp> copy_ans = ans;
-			  mp::sync< std::unordered_multimap<mer_fwd_id,
-			  mer_get_fwd*, mer_fwd_id_hash> >::ref mer_range_fwd_r(mer_range_fwd);
-			
-			  std::unordered_multimap<mer_fwd_id,mer_get_fwd*>::iterator it = mer_range_fwd_r->find(mer_fwd_id(name,identifier));
-			  it->second->toSend.merge(copy_ans);
-			  it->second->cnt--;
-			  if(it->second->cnt == 0){
-			  const MERDY::ok_get_range ok_get_range(OP::OK_GET_RANGE, name, identifier, it->second->toSend);
-			  tuple_send(ok_get_range, it->second->org);
-			  delete it->second;
-			  mer_range_fwd_r->erase(it);
-			  DEBUG_OUT("ok fowarding.\n");
+			  std::list<mercury_kvp>::const_iterator ans_it = ans.begin();
+			  while(ans_it != ans.end()){
+			  DEBUG(ans_it->dump());
+			  ++ans_it;
 			  }
-			*/
+			//*/
 			
 			mp::sync< std::multimap<mercury_request_fowards, std::shared_ptr<sql_select_workingset> > >::ref suspending_selects_r(suspending_selects);
 			std::multimap<mercury_request_fowards, std::shared_ptr<sql_select_workingset> >::iterator req_it = suspending_selects_r->find(mercury_request_fowards(name,identifier));
-			req_it->second->execute(name,identifier,ans);
-			
+			DEBUG_OUT(" range came for %lu items.\n", ans.size());
+			if(req_it != suspending_selects_r->end()){
+				req_it->second->execute(name,identifier,ans);
+				suspending_selects_r->erase(req_it);
+			}
 			break;
 		}
 		case OP::OK_TELLME_RANGE:{

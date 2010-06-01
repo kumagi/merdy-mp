@@ -96,12 +96,14 @@ int main(int argc, char** argv){
 			int fd = sockets.get_socket(address(settings.targetip,settings.targetport));
 			while(fgets(buff,256,fp.get())){
 				std::string sql = std::string(buff);
+				if(sql.data()[0] == '#')continue;
+				if(sql == std::string("\n")) continue;
 				const msgpack::type::tuple<int,std::string> do_sql(OP::DO_SQL,sql);
 				tuple_send(do_sql,address(settings.targetip,settings.targetport));
 				char buff[1024];
 				int readsize = read(fd, buff, 1024);
 				buff[readsize] = '\0';
-				fprintf(stderr,"%s ",buff);
+				fprintf(stderr,"%s \n%s\n----\n",sql.c_str(),buff);
 			}
 		}
 	}

@@ -7,4 +7,8 @@ INSERT INTO merdy (name,published_year,pages,type) VALUES (ok,191,2442,gia)
 INSERT INTO merdy (name,published_year,pages,type) VALUES (haaku,1916,2613,goha)
 INSERT INTO merdy (name,published_year,pages,type) VALUES (anu,1191,442,g2ia)
 INSERT INTO merdy (name,published_year,pages,type) VALUES (haku,16,63,g21oha)
-SELECT name,published_year FROM merdy WHERE pages < 1000
+
+SELECT name,published_year FROM merdy WHERE pages < 1000 & pages > 200
+SELECT type FROM merdy WHERE pages > 2000
+#hoge
+SELECT pages FROM merdy WHERE name > b

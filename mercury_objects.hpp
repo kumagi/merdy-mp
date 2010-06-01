@@ -27,8 +27,8 @@ public:
 		string = 1,
 		//invalid = 2,
 	};
-	attr():num(0),str(std::string("")),num_or_str(num){};
-	explicit attr(int _num):num(_num),str(),num_or_str(number){};
+	attr():num(0),str(std::string("INVALID")),num_or_str(number){};
+	explicit attr(int _num):num(_num),str(""),num_or_str(number){};
 	explicit attr(const std::string& _str):num(),str(_str),num_or_str(string){}
 	attr(const attr& org):num(org.num),str(org.str),num_or_str(org.num_or_str){}
 	
@@ -64,9 +64,9 @@ public:
 			str = std::string(" ");
 		}
 	}
-	//bool is_invalid()const{
-	//	return number == invalid;
-	//}
+	bool is_invalid()const{
+		return num_or_str == num;
+	}
 	int get_type()const{
 		return num_or_str;
 	}
@@ -91,19 +91,16 @@ public:
 		
 		if(num_or_str == number){return num < rhs.num;}
 		else if(num_or_str == string){return str < rhs.str;}else{
-			assert(!"invalid comparison");
 			return 0;
 		}
 	}
 	bool operator==(const attr& rhs)const{
-		assert(num_or_str == rhs.num_or_str);
 		if(num_or_str == number){
 			return num == rhs.num;
 		}else if(num_or_str == string){
 			return str == rhs.str;
 		}else{
-			assert(!"invalid comparison");
-			return 0;
+			return false;  // is it danger? FIXME:
 		}
 	}
 	void operator=(const attr& rhs){
@@ -146,7 +143,21 @@ public:
 	attr_range():begin(),end(),left_closed(true),right_closed(true){};
 	attr_range(const attr_range& org):begin(org.begin),end(org.end),left_closed(org.left_closed),right_closed(org.right_closed){};
 	attr_range(const attr& _begin, const attr& _end):begin(_begin),end(_end),left_closed(true),right_closed(true){
-		assert(_begin < _end);
+		if(_begin.is_invalid()){
+			if(end.is_string()){
+				begin = attr(" ");
+			}else{
+				begin = attr(0);
+			}
+			begin.minimize();
+		}else if(_end.is_invalid()){
+			if(begin.is_string()){
+				end = attr(" ");
+			}else{
+				end = attr(0);
+			}
+			end.maximize();
+		}
 	}
 	attr_range(const attr& _begin, const attr& _end, const bool _l, const bool _r):begin(_begin),end(_end),left_closed(_l),right_closed(_r){
 		assert(_begin < _end);

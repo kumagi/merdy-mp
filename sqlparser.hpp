@@ -37,6 +37,7 @@ enum sql{
 }
 
 inline bool is_number(const char* str, int length){
+	DEBUG_OUT("is_number(%s,%d)",str,length);
 	while(length > 0){
 		if(*str < '0' || '9' < *str){
 			return false;
@@ -176,7 +177,7 @@ private:
 		tokenize target(data);
 		while(1){
 			const std::string& token(target.next());
-			if(token == std::string("CREATE")){
+			if(token == std::string("CREATE") || token == std::string("create")){
 				DEBUG_OUT("create:");
 				parsed.push_back(segment(sql::create));
 			}else if(token == std::string("TABLE") || token == std::string("table")){
@@ -206,6 +207,12 @@ private:
 			}else if(token == std::string("FROM") || token == std::string("from")){
 				DEBUG_OUT("from:");
 				parsed.push_back(segment(sql::from));
+			}else if(token == std::string("&") || token == std::string("AND") || token == std::string("and")){
+				DEBUG_OUT("&:");
+				parsed.push_back(segment(sql::op_and));
+			}else if(token == std::string("|") ||token == std::string("OR") || token == std::string("or")){
+				DEBUG_OUT("|:");
+				parsed.push_back(segment(sql::op_or));
 			}else if(token == std::string("(")){
 				DEBUG_OUT("(:");
 				parsed.push_back(segment(sql::left_brac));
@@ -224,12 +231,6 @@ private:
 			}else if(token == std::string("<")){
 				DEBUG_OUT("<:");
 				parsed.push_back(segment(sql::op_lt));
-			}else if(token == std::string("&")){
-				DEBUG_OUT("&:");
-				parsed.push_back(segment(sql::op_and));
-			}else if(token == std::string("|")){
-				DEBUG_OUT("|:");
-				parsed.push_back(segment(sql::op_or));
 			}else if(token == std::string("*")){
 				DEBUG_OUT("*:");
 				parsed.push_back(segment(sql::op_star));
@@ -244,7 +245,7 @@ private:
 					DEBUG_OUT("str[%s]:",token.c_str());
 					parsed.push_back(segment(attr(std::string(token))));
 				}else{ // int 
-					DEBUG_OUT("int[%s]",token.c_str());
+					DEBUG_OUT("int[%s]:",token.c_str());
 					parsed.push_back(segment(attr(atoi(token.c_str()))));
 				}
 			}
