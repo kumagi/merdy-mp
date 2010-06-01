@@ -18,6 +18,7 @@ static const char interrupt[] = {-1,-12,-1,-3,6};
 
 static struct settings{
 	int verbose;
+	std::string interface;
 	unsigned short targetport;
 	int myip,targetip;
 	settings():verbose(10),targetport(11011),myip(get_myip()),targetip(aton("127.0.0.1")){}
@@ -54,6 +55,7 @@ int main(int argc, char** argv){
 	opt.add_options()
 		("help,h", "view help")
 		("verbose,v", "verbose mode")
+		("interface,i",po::value<std::string>(&settings.interface)->default_value("eth0"), "my interface")
 		("address,a",po::value<std::string>(&target)->default_value("127.0.0.1"), "target address")
 		("tport,P",po::value<unsigned short>(&settings.targetport)->default_value(11011), "target port");
 	
@@ -70,6 +72,7 @@ int main(int argc, char** argv){
 	if(vm.count("verbose")){
 		settings.verbose++;
 	}
+	settings.myip = get_myip_interface(settings.interface.c_str());
 	settings.targetip = aton(target.c_str());
 	
 	// view options

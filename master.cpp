@@ -30,10 +30,11 @@ static const char interrupt[] = {-1,-12,-1,-3,6};
 
 static struct settings{
 	int verbose;
+	std::string interface;
 	unsigned short myport,masterport;
 	int myip,masterip;
 	int i_am_master;
-	settings():verbose(10),myport(11011),masterport(11011),myip(get_myip()),masterip(aton("127.0.0.1")),i_am_master(1){}
+	settings():verbose(10),myport(11011),masterport(11011),myip(),masterip(aton("127.0.0.1")),i_am_master(1){}
 }settings;
 
 mp::sync< std::set<address> > dynamo_nodes;
@@ -165,7 +166,7 @@ public:
 		case OP::NG_ASSIGN_RANGE:{
 			DEBUG_OUT("NG_ASSIGN_RANGE:");
 			MERDY::ng_assign_range ng_assign_range(obj);
-			std::string& name = ng_assign_range.get<1>();
+			DEBUG(std::string& name = ng_assign_range.get<1>());
 			DEBUG_OUT(" for %s\n", name.c_str());
 			break;
 		}
@@ -353,6 +354,7 @@ int main(int argc, char** argv){
 	opt.add_options()
 		("help,h", "view help")
 		("verbose,v", "verbose mode")
+		("interface,i",po::value<std::string>(&settings.interface)->default_value("eth0"), "my interface")
 		("port,p",po::value<unsigned short>(&settings.myport)->default_value(11011), "my port number")
 		("address,a",po::value<std::string>(&master)->default_value("127.0.0.1"), "master's address")
 		("mport,P",po::value<unsigned short>(&settings.masterport)->default_value(11011), "master's port");
@@ -373,6 +375,7 @@ int main(int argc, char** argv){
 	if(settings.masterip != aton("127.0.0.1") || settings.myport != settings.masterport){
 		settings.i_am_master = 0;
 	}
+	settings.myip = get_myip_interface(settings.interface.c_str());
 	
 	// view options
 	printf("verbose:%d\naddress:[%s:%d]\n",

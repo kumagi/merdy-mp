@@ -26,6 +26,7 @@ static const char interrupt[] = {-1,-12,-1,-3,6};
 
 static struct settings{
 	int verbose;
+	std::string interface;
 	unsigned short myport,masterport;
 	int myip,masterip;
 	int i_am_master;
@@ -92,7 +93,7 @@ public:
 	main_handler(int _fd,mp::wavy::loop* _lo):mp::wavy::handler(_fd),lo(_lo){
 	}
 	
-	void event_handle(int fd, msgpack::object obj, msgpack::zone* z){
+	void event_handle(int , msgpack::object obj, msgpack::zone* ){
 		msgpack::type::tuple<int> op(obj);
 		int operation = op.get<0>();
 		switch (operation){
@@ -923,6 +924,7 @@ int main(int argc, char** argv){
 	opt.add_options()
 		("help,h", "view help")
 		("verbose,v", "verbose mode")
+		("interface,i",po::value<std::string>(&settings.interface)->default_value("eth0"), "my interface")
 		("port,p",po::value<unsigned short>(&settings.myport)->default_value(11011), "my port number")
 		("address,a",po::value<std::string>(&master)->default_value("127.0.0.1"), "master's address")
 		("mport,P",po::value<unsigned short>(&settings.masterport)->default_value(11011), "master's port");
@@ -944,6 +946,7 @@ int main(int argc, char** argv){
 	if(settings.masterip != aton("127.0.0.1") || settings.myport != settings.masterport){
 		settings.i_am_master = 0;
 	}
+	settings.myip = get_myip_interface(settings.interface.c_str());
 	
 	// view options
 	printf("verbose:%d\naddress:[%s:%d]\n",

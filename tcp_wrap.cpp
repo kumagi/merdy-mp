@@ -146,3 +146,13 @@ int get_myip(void){
 	close(fd);
 	return (int)((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr.s_addr;
 }
+
+int get_myip_interface(const char* const name){
+	struct ifreq ifr;
+	int fd=socket(AF_INET, SOCK_DGRAM,0);
+	ifr.ifr_addr.sa_family = AF_INET;
+	strncpy(ifr.ifr_name,name,IFNAMSIZ-1);
+	ioctl(fd,SIOCGIFADDR,&ifr);
+	close(fd);
+	return (int)((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr.s_addr;
+}

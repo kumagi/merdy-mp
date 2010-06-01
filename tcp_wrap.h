@@ -38,4 +38,5 @@ void socket_maximize_rcvbuf(const int socket) __attribute__((always_inline));
 
 int connect_ip_port(const int socket,const int ip,const unsigned short port);
 int get_myip(void);
+int get_myip_interface(const char* const name);
 #endif
