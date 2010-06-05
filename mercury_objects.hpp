@@ -317,32 +317,32 @@ public:
 
 class mercury_kvp{
 public:
-	attr id;
-	uint64_t data;
-	mercury_kvp():id(),data(){}
-	mercury_kvp(const std::string _attr, const uint64_t _data):id(std::string(_attr)),data(_data){}
-	mercury_kvp(const attr& _attr,const uint64_t _data):id(_attr),data(_data){}
-	mercury_kvp(const mercury_kvp& org):id(org.id),data(org.data){}
+	attr attr_;
+	uint64_t hash_;
+	mercury_kvp():attr_(),hash_(){}
+	mercury_kvp(const std::string _attr, const uint64_t _hash):attr_(std::string(_attr)),hash_(_hash){}
+	mercury_kvp(const attr& _attr,const uint64_t _hash):attr_(_attr),hash_(_hash){}
+	mercury_kvp(const mercury_kvp& org):attr_(org.attr_),hash_(org.hash_){}
 	const attr& get_attr()const{
-		return id;
+		return attr_;
 	}
-	const uint64_t& get_data()const{
-		return data;
+	const uint64_t& get_hash()const{
+		return hash_;
 	}
 	void dump()const{
-		id.dump();
-		fprintf(stderr," -> %llu",(unsigned long long)data);
+		attr_.dump();
+		fprintf(stderr," -> %llu",(unsigned long long)hash_);
 	}
 	bool operator<(const mercury_kvp& rhs)const{
-		if(data < rhs.data)return true;
-		else if(rhs.data < data)return false;
-		else if(id < rhs.id) return true;
+		if(hash_ < rhs.hash_)return true;
+		else if(rhs.hash_ < hash_)return false;
+		else if(attr_ < rhs.attr_) return true;
 		else return false;
 	}
 	bool operator==(const mercury_kvp& rhs)const{
-		return data==rhs.data;
+		return attr_==rhs.attr_;
 	}
-	MSGPACK_DEFINE(id, data); // serialize and deserialize ok
+	MSGPACK_DEFINE(attr_, hash_); // serialize and deserialize ok
 };
 
 struct mer_fwd_id{
@@ -376,11 +376,11 @@ private:
 struct mer_set_fwd{
 	int cnt;
 	const address org;
+	mer_set_fwd(const mer_set_fwd& _org):cnt(_org.cnt),org(_org.org){};
 	mer_set_fwd(const int _cnt, const address& _org):cnt(_cnt),org(_org){}
 	//mer_set_fwd(const mer_set_fwd& _org):cnt(_org.cnt),org(_org.org){}
 private:
 	mer_set_fwd();
-	mer_set_fwd(const mer_set_fwd&);
 };
 
 class mer_fwd_id_hash{

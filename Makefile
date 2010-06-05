@@ -9,6 +9,7 @@ target:master
 target:worker
 target:proxy
 target:client
+target:random
 #target:dynamo_test
 #target:mercury_test
 
@@ -20,6 +21,8 @@ proxy:proxy.o tcp_wrap.o
 	$(CC) proxy.o tcp_wrap.o -o proxy $(OPTS) $(WARNS) $(LD)
 client:client.o tcp_wrap.o
 	$(CC) client.o tcp_wrap.o -o client $(OPTS) $(WARNS) $(LD)
+random:random_client.o tcp_wrap.o
+	$(CC) random_client.o tcp_wrap.o -o random $(OPTS) $(WARNS) $(LD)
 
 dynamo_test:dynamo_test.o tcp_wrap.o
 	$(CC) dynamo_test.o tcp_wrap.o -o dynamo_test $(OPTS) $(WARNS) $(LD)
@@ -35,6 +38,8 @@ proxy.o:proxy.cpp tcp_wrap.o $(HEADS) sqlparser.hpp
 	$(CC) proxy.cpp -o proxy.o -c $(OPTS) $(WARNS)
 client.o:client.cpp
 	$(CC) client.cpp -o client.o -c $(OPTS) $(WARNS)
+random_client.o:random_client.cpp 
+	$(CC) random_client.cpp -o random_client.o -c $(OPTS) $(WARNS)
 
 dynamo_test.o:dynamo_test.cpp tcp_wrap.o $(HEADS)
 	$(CC) dynamo_test.cpp -o dynamo_test.o -c $(OPTS) $(WARNS)

@@ -27,3 +27,4 @@ inline uint64_t hash64(const void* const ptr, const int len,unsigned int seed=0)
 inline uint64_t hash64(const std::string& data, unsigned int seed=0){
 	return MurmurHash64(data.c_str(),data.length(), seed);
 }
+ 

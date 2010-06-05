@@ -49,7 +49,7 @@ mp::sync< std::unordered_map<uint64_t, value_vclock> > key_value;
 mp::sync< std::unordered_multimap<std::string, mercury_instance> > mer_node;
 
 mp::sync< std::unordered_multimap<mer_fwd_id,mer_get_fwd*,mer_fwd_id_hash> > mer_get_fwds;
-mp::sync< std::unordered_multimap<mer_fwd_id,mer_set_fwd*,mer_fwd_id_hash> > mer_set_fwds;
+mp::sync< std::unordered_multimap<mer_fwd_id,mer_set_fwd,mer_fwd_id_hash> > mer_set_fwds;
 mp::sync< std::unordered_multimap<mer_fwd_id,mer_get_fwd*,mer_fwd_id_hash> > mer_range_fwd;
 
 
@@ -142,9 +142,10 @@ public:
 			}
 			const address& coordinator = it->second;
 			DEBUG(it->second.dump());
-			
-			mp::sync< std::unordered_multimap<uint64_t, address> >::ref set_fwd_r(set_fwd);
-			set_fwd_r->insert(std::pair<uint64_t,address>(key,org));
+			{
+				mp::sync< std::unordered_multimap<uint64_t, address> >::ref set_fwd_r(set_fwd);
+				set_fwd_r->insert(std::pair<uint64_t,address>(key,org));
+			}
 			
 			MERDY::set_coordinate set_coordinate((int)OP::SET_COORDINATE, key, value, address(settings.myip,settings.myport));
 			tuple_send(set_coordinate,coordinator);
@@ -188,14 +189,16 @@ public:
 			}
 			
 			value_vclock vcvalue;
-			mp::sync< std::unordered_map<uint64_t, value_vclock> >::ref key_value_r(key_value);
-			std::unordered_map<uint64_t, value_vclock>::iterator result = key_value_r->find(key);
-			if(result == key_value_r->end()){
-				vcvalue.update(value);
-			}else{
-				vcvalue.update(value,result->second.get_clock());
+			{
+				mp::sync< std::unordered_map<uint64_t, value_vclock> >::ref key_value_r(key_value);
+				std::unordered_map<uint64_t, value_vclock>::iterator result = key_value_r->find(key);
+				if(result == key_value_r->end()){
+					vcvalue.update(value);
+				}else{
+					vcvalue.update(value,result->second.get_clock());
+				}
+				key_value_r->insert(std::pair<uint64_t, value_vclock>(key,vcvalue));
 			}
-			key_value_r->insert(std::pair<uint64_t, value_vclock>(key,vcvalue));
 			++it;
 			if(it == dy_hash.end()){
 				it = dy_hash.begin();
@@ -425,7 +428,7 @@ public:
 			const MERDY::set_attr set_attr(obj);
 			const std::string& name = set_attr.get<1>();
 			const int& identifier = set_attr.get<2>();
-			const std::list<mercury_kvp>& data = set_attr.get<3>(); 
+			const mercury_kvp& kvp = set_attr.get<3>(); 
 			const address& org = set_attr.get<4>();
 			
 			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
@@ -436,72 +439,44 @@ public:
 				DEBUG_OUT("i dont have attr %s\n",name.c_str());
 			}
 			
-			DEBUG_OUT("set data in [%s] ",name.c_str());
+			DEBUG_OUT("set kvp in [%s] ",name.c_str());
 			
-			mp::sync< std::unordered_multimap<mer_fwd_id, mer_set_fwd*, mer_fwd_id_hash> >::ref mer_set_fwds_r(mer_set_fwds);
-			mer_set_fwd* fwd = NULL;
-			std::list<mercury_kvp>::const_iterator it = data.begin();
-			
-			std::list<std::pair<address,std::list<mercury_kvp> > > foward_list; 
-			while(it != data.end()){
-				int ok=0;
-				while(it_mi != mer_node_r->end() && it_mi->first == name){
-					if(it_mi->second.get_range().contain(it->id)){
-						it_mi->second.kvp.insert(std::pair<attr,uint64_t>(it->id,it->data));
-						ok = 1;
-						DEBUG(it->id.dump());
-						DEBUG_OUT("%llu inserted in  and %lu entries in",(unsigned long long)it->data, it_mi->second.kvp.size());
-						DEBUG(it_mi->second.get_range().dump());
-						DEBUG_OUT("\n");
+			int ok=0;
+			while(it_mi != mer_node_r->end() && it_mi->first == name){
+				if(it_mi->second.get_range().contain(kvp.attr_)){
+					it_mi->second.kvp.insert(std::pair<attr,uint64_t>(kvp.get_attr(),kvp.get_hash()));
+					ok = 1;
+					
+					DEBUG(kvp.get_attr().dump());
+					DEBUG_OUT("%llu inserted in  and %lu entries in",(unsigned long long)kvp.get_hash(), it_mi->second.kvp.size());
+					DEBUG(it_mi->second.get_range().dump());
+					DEBUG_OUT("\n");
+					
+					const MERDY::ok_set_attr ok_set_attr(OP::OK_SET_ATTR, name, identifier);
+					tuple_send(ok_set_attr, org);
+					break;
+				}
+				++it_mi;
+			}
+			if(!ok){// pass SET_ATTR to correct node
+				DEBUG_OUT(" passed\n");
+				it_mi = it_mi_bak;
+				
+				mp::sync< std::unordered_multimap<mer_fwd_id, mer_set_fwd, mer_fwd_id_hash> >::ref mer_set_fwds_r(mer_set_fwds);
+				mer_set_fwds_r->insert(std::pair<mer_fwd_id,mer_set_fwd>(mer_fwd_id(name,identifier),mer_set_fwd(1,org)));
+				
+				std::map<attr_range, address>::const_iterator target = it_mi->second.get_hubs().begin();
+				while(target != it_mi->second.get_hubs().end()){
+					if(target->first.contain(kvp.get_attr())){
 						break;
 					}
-					++it_mi;
+					++target;
 				}
-				if(!ok){// pass SET_ATTR to correct node
-					DEBUG_OUT(" passed\n");
-					it_mi = it_mi_bak;
-					if(fwd == NULL){
-						fwd = new mer_set_fwd(1,org);
-						mer_set_fwds_r->insert(std::pair<mer_fwd_id,mer_set_fwd*>(mer_fwd_id(name,identifier),fwd));
-					}
-					std::map<attr_range, address>::const_iterator target = it_mi->second.get_hubs().begin();
-					while(target != it_mi->second.get_hubs().end()){
-						if(target->first.contain(it->id)){
-							break;
-						}
-						++target;
-					}
-					
-					assert(target->second != address(settings.myip,settings.myport) && target != it_mi->second.get_hubs().end());
-							
-					// search for foward_list
-					std::list<std::pair<address,std::list<mercury_kvp> > >::iterator fwd_it = foward_list.begin();
-					while(fwd_it != foward_list.end()){
-						if(fwd_it->first == target->second){
-							break;
-						}
-						++fwd_it;
-					}
-					if(fwd_it == foward_list.end()){
-						fwd->cnt++;
-						std::list<mercury_kvp> newlist;
-						fwd_it = foward_list.insert(fwd_it,std::pair<address,std::list<mercury_kvp> >(target->second,newlist));
-					}
-					fwd_it->second.push_back(mercury_kvp(it->id,it->data));
-				}
-				++it;
-			}
-			if(fwd){
-				std::list<std::pair<address,std::list<mercury_kvp> > >::iterator fwd_it = foward_list.begin();
-				while(fwd_it != foward_list.end()){
-					const MERDY::set_attr set_attr(OP::SET_ATTR,name,identifier,fwd_it->second,address(settings.myip,settings.myport));
-					tuple_send(set_attr,fwd_it->first);
-					++fwd_it;
-				}
-				fwd->cnt--;
-			}else{
-				const MERDY::ok_set_attr ok_set_attr(OP::OK_SET_ATTR, name, identifier);
-				tuple_send(ok_set_attr, org);
+				
+				assert(target->second != address(settings.myip,settings.myport) && target != it_mi->second.get_hubs().end());
+				
+				const MERDY::set_attr pass_set_attr(OP::SET_ATTR,name,identifier,kvp,address(settings.myip,settings.myport));
+				tuple_send(pass_set_attr,target->second);
 			}
 			DEBUG_OUT("done\n");
 			break;
@@ -512,15 +487,14 @@ public:
 			const std::string& name = ok_set_attr.get<1>();
 			const int& identifier = ok_set_attr.get<2>();
 			
-			mp::sync< std::unordered_multimap<mer_fwd_id, mer_set_fwd*, mer_fwd_id_hash> >::ref mer_set_fwds_r(mer_set_fwds);
-			std::unordered_multimap<mer_fwd_id,mer_set_fwd*>::iterator it = mer_set_fwds_r->find(mer_fwd_id(name,identifier));
+			mp::sync< std::unordered_multimap<mer_fwd_id, mer_set_fwd, mer_fwd_id_hash> >::ref mer_set_fwds_r(mer_set_fwds);
+			std::unordered_multimap<mer_fwd_id,mer_set_fwd>::iterator it = mer_set_fwds_r->find(mer_fwd_id(name,identifier));
 			
 			assert(it != mer_set_fwds_r->end());
-			it->second->cnt--;
-			if(it->second->cnt == 0){
+			it->second.cnt--;
+			if(it->second.cnt == 0){
 				MERDY::ok_set_attr ok_set_attr(OP::OK_SET_ATTR, name, identifier);
-				tuple_send(ok_set_attr,it->second->org);
-				delete it->second;
+				tuple_send(ok_set_attr,it->second.org);
 				mer_set_fwds_r->erase(it);
 			}
 			break;

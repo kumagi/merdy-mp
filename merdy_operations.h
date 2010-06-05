@@ -123,7 +123,7 @@ typedef msgpack::type::tuple<int,std::set<address> > ok_add_me_mer;
 
 // proxy -> mercury
 typedef msgpack::type::tuple<int,std::string,int,attr_range,address> get_range;
-typedef msgpack::type::tuple<int,std::string,int,std::list<mercury_kvp>, address > set_attr;
+typedef msgpack::type::tuple<int,std::string,int,mercury_kvp, address > set_attr;
 typedef msgpack::type::tuple<int,std::string,int,std::list<attr>,address> get_attr;
 
 // mercury/proxy -> mercury/proxy

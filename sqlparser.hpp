@@ -1,11 +1,5 @@
 namespace sqlparser{
-namespace type{
-enum query_data{
-	query,
-	data,
-	invalid,
-};
-}
+
 namespace sql{
 enum sql{
 	create,
@@ -36,8 +30,8 @@ enum sql{
 };
 }
 
-inline bool is_number(const char* str, int length){
-	DEBUG_OUT("is_number(%s,%d)",str,length);
+inline bool chk_number(const char* str, int length){
+	//	DEBUG_OUT("is_number(%s,%d)",str,length);
 	while(length > 0){
 		if(*str < '0' || '9' < *str){
 			return false;
@@ -49,65 +43,76 @@ inline bool is_number(const char* str, int length){
 }
 struct segment{
 	// query or data
-	type::query_data query_or_data;
-	int query;
-	attr data;
-	explicit segment(const int _query):query_or_data(type::query),query(_query),data(){};
-	explicit segment(const attr& _attr):query_or_data(type::data),query(sql::invalid),data(_attr){};
-	segment():query_or_data(type::invalid),query(sql::invalid),data(){}
-	segment(const segment& org):query_or_data(org.query_or_data),query(org.query),data(org.data){};
+	enum type{
+		query,
+		string,
+		invalid,
+	};
+	enum type query_or_string;
+	enum sql::sql query_;
+	std::string string_;
+	explicit segment(const sql::sql _query):query_or_string(type::query),query_(_query),string_(){};
+	explicit segment(const std::string& _str):query_or_string(type::string),query_(sql::invalid),string_(_str){};
+	segment():query_or_string(type::invalid),query_(sql::invalid),string_(){}
+	segment(const segment& org):query_or_string(org.query_or_string),query_(org.query_),string_(org.string_){};
 	// setter
 	segment& operator=(const segment& rhs){
-		query_or_data = rhs.query_or_data;
-		query = rhs.query;
-		data = rhs.data;
+		query_or_string = rhs.query_or_string;
+		query_ = rhs.query_;
+		string_ = rhs.string_;
 		return *this;
 	}
-	bool operator==(const int rhs)const{
-		return query_or_data == type::query && query == rhs;
+	bool operator==(const sql::sql rhs)const{
+		return query_or_string == type::query && query_ == rhs;
 	}
-	bool operator==(const attr& rhs)const{
-		return query_or_data == type::data && data == rhs;
+	bool operator==(const std::string& rhs)const{
+		return query_or_string == type::string && string_ == rhs;
 	}
-	void set_query(const int _query){
-		query_or_data = type::query;
-		query = _query;
-		data = attr();
+	void set_query(const sql::sql _query){
+		query_or_string = type::query;
+		query_ = _query;
+		string_.clear();
 	}
-	void set_data(const attr& _data){
-		query_or_data = type::data;
-		query = 0;
-		data = _data;
+	void set_string(const std::string& _str){
+		query_or_string = type::string;
+		query_ = sql::invalid;
+		string_ = _str;
 	}
 	// getter
-	int get_query(void)const{
-		if(query_or_data != type::query){
+	enum sql::sql get_query(void)const{
+		if(query_or_string != type::query){
 			assert(!"dont get other type: query");
 		}
-		return query;
+		return query_;
 	}
-	const attr& get_data(void)const{
-		if(query_or_data != type::data){
+	const std::string& get_string(void)const{
+		if(query_or_string != type::string){
 			assert(!"dont get other type: data");
 		}
-		return data;
+		return string_;
 	}
 	bool is_query()const{
-		return query_or_data == type::query;
+		return query_or_string == type::query;
 	}
-	bool is_data()const{
-		return query_or_data == type::data;
+	bool is_string()const{
+		return query_or_string == type::string;
+	}
+	bool is_number()const{
+		return query_or_string == type::string && chk_number(string_.data(),string_.length());
+	}
+	int get_number()const{
+		assert(is_number());
+		return atoi(string_.c_str());
 	}
 	bool is_invalid()const{
-		return query_or_data == type::invalid;
+		return query_or_string == type::invalid;
 	}
 	void dump()const{
-		if(query_or_data == type::query){
-			fprintf(stderr,"q%d ",query);
-		}else if(query_or_data == type::data){
-			fprintf(stderr,"a");
-			data.dump();
-		}else if(query_or_data == type::invalid){
+		if(query_or_string == type::query){
+			fprintf(stderr,"%d ",query_);
+		}else if(query_or_string == type::string){
+			fprintf(stderr,"[%s]",string_.c_str());
+		}else if(query_or_string == type::invalid){
 			fprintf(stderr,"# ");
 		}
 	}
@@ -241,13 +246,8 @@ private:
 				DEBUG_OUT("ok\n");
 				break;
 			}else{
-				if(!is_number(token.data(),token.length())){ // string
-					DEBUG_OUT("str[%s]:",token.c_str());
-					parsed.push_back(segment(attr(std::string(token))));
-				}else{ // int 
-					DEBUG_OUT("int[%s]:",token.c_str());
-					parsed.push_back(segment(attr(atoi(token.c_str()))));
-				}
+				DEBUG_OUT("str[%s]:",token.c_str());
+				parsed.push_back(segment(std::string(token)));
 			}
 		}
 		
