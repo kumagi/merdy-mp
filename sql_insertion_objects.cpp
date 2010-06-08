@@ -9,6 +9,7 @@ public:
 		:org(_org.org),buff(_org.buff){}
 
 	~sql_answer(){
+		DEBUG_OUT("responce send.\n");
 		write(org,buff.data(),buff.length());
 	}
 private:

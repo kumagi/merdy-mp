@@ -23,11 +23,11 @@ class attr{
 	int num_or_str;
 public:
 	enum flag{
-		number = 0,
-		string = 1,
-		//invalid = 2,
+		number,
+		string,
+		invalid,
 	};
-	attr():num(0),str(std::string("INVALID")),num_or_str(number){};
+	attr():num(0),str(std::string("INVALID")),num_or_str(invalid){};
 	explicit attr(int _num):num(_num),str(""),num_or_str(number){};
 	explicit attr(const std::string& _str):num(),str(_str),num_or_str(string){}
 	attr(const attr& org):num(org.num),str(org.str),num_or_str(org.num_or_str){}
@@ -41,7 +41,8 @@ public:
 		return str;
 	}
 	void set_string(const std::string& _str){
-		assert(num_or_str == string);
+		num_or_str = string;
+		num = 0;
 		str = _str;
 	}
 	bool is_int()const{
@@ -65,7 +66,7 @@ public:
 		}
 	}
 	bool is_invalid()const{
-		return num_or_str == num;
+		return num_or_str == invalid;
 	}
 	int get_type()const{
 		return num_or_str;
@@ -73,6 +74,7 @@ public:
 	void set(int _num){
 		num_or_str = number;
 		num = _num;
+		str.clear();
 	}
 	void set(std::string& _str){
 		num_or_str = string;
@@ -116,11 +118,14 @@ public:
 	}
 	void dump()const{
 		if(num_or_str == number){
-			fprintf(stderr,"%d ",num);
+			fprintf(stderr,"n[%d] ",num);
 		}else if(num_or_str == string){
-			fprintf(stderr,"%s ",str.c_str());
-		}else{
+			fprintf(stderr,"s[%s] ",str.c_str());
+		}else if(is_invalid()){
 			fprintf(stderr,"* ");
+		}else{
+			fprintf(stderr,"err[%d] ",num_or_str);
+			assert(false);
 		}
 	}
 	MSGPACK_DEFINE(num, str, num_or_str); // serialize and deserialize ok
@@ -143,6 +148,7 @@ public:
 	attr_range():begin(),end(),left_closed(true),right_closed(true){};
 	attr_range(const attr_range& org):begin(org.begin),end(org.end),left_closed(org.left_closed),right_closed(org.right_closed){};
 	attr_range(const attr& _begin, const attr& _end):begin(_begin),end(_end),left_closed(true),right_closed(true){
+		/*
 		if(_begin.is_invalid()){
 			if(end.is_string()){
 				begin = attr(" ");
@@ -158,6 +164,7 @@ public:
 			}
 			end.maximize();
 		}
+		*/
 	}
 	attr_range(const attr& _begin, const attr& _end, const bool _l, const bool _r):begin(_begin),end(_end),left_closed(_l),right_closed(_r){
 		assert(_begin < _end);
@@ -240,7 +247,11 @@ public:
 	bool contain(const attr& atr)const{
 		return (begin < atr && atr < end) ||
 			(left_closed && atr == begin) ||
-			(right_closed && atr == end);
+			(right_closed && atr == end) ||
+			(begin < atr && end.is_invalid())||
+			(begin.is_invalid() && atr < end)||
+			(left_closed && atr == begin && end.is_invalid())||
+			(right_closed && begin.is_invalid() && atr == end);
 	}
 	
 	bool contain(const attr_range& range)const{
@@ -276,7 +287,7 @@ class mercury_instance{
 	attr_range range;
 	std::map<attr_range,address> hubs;
 public:
-	std::map<attr, uint64_t> kvp;
+	std::multimap<attr, uint64_t> kvp;
 	mercury_instance():range(){}
 	mercury_instance(const attr_range& _range,const std::map<attr_range,address>& _hubs):range(_range),hubs(_hubs){}
 	mercury_instance(const mercury_instance& org):range(org.range),hubs(org.hubs){}
@@ -311,7 +322,7 @@ public:
 class range_query_hash{
 public:
 	std::size_t operator()(const range_query_fwd& o)const{
-		return o.id ^ hash32(o.name);
+		return o.id + hash32(o.name);
 	}
 };
 
@@ -331,13 +342,20 @@ public:
 	}
 	void dump()const{
 		attr_.dump();
-		fprintf(stderr," -> %llu",(unsigned long long)hash_);
+		fprintf(stderr,"-> %lu",hash_);
 	}
 	bool operator<(const mercury_kvp& rhs)const{
+		/*
+		if(attr_ < rhs.attr_) return true;
+		else if(rhs.attr_ < attr_) return false;
+		else if(hash_ < rhs.hash_) return true;
+		else return true;
+		//*/
 		if(hash_ < rhs.hash_)return true;
 		else if(rhs.hash_ < hash_)return false;
 		else if(attr_ < rhs.attr_) return true;
 		else return false;
+		//*/
 	}
 	bool operator==(const mercury_kvp& rhs)const{
 		return attr_==rhs.attr_;
@@ -345,6 +363,12 @@ public:
 	MSGPACK_DEFINE(attr_, hash_); // serialize and deserialize ok
 };
 
+class kvp_hash_equal{
+public:
+	bool operator()(const mercury_kvp& lhs, const mercury_kvp& rhs)const{
+		return lhs.hash_ == rhs.hash_;
+	}
+};
 struct mer_fwd_id{
 	std::string name;
 	int identifier;
@@ -386,6 +410,6 @@ private:
 class mer_fwd_id_hash{
 public:
 	std::size_t operator()(const mer_fwd_id& o)const{
-		return hash32(o.name) ^ hash32(o.identifier);
+		return hash32(o.name) + hash32(o.identifier);
 	}
 };

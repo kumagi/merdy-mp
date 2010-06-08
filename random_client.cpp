@@ -9,6 +9,9 @@
 #include "address.hpp"
 #include "sockets.hpp"
 
+#include <boost/thread.hpp>
+#include <boost/bind.hpp>
+
 #include "merdy_operations.h"
 #include <boost/program_options.hpp>
 #include <unordered_map>
@@ -45,10 +48,17 @@ inline void tuple_send(const tuple& t, const address& ad){
 	sockets.writev(ad, iov, vbuf.vector_size());
 }
 
+template<typename tuple>
+void proxy_tuple_send(std::pair<const tuple&,const address&> pair){
+	tuple_send(pair.first,pair.second);
+}
+
 namespace po = boost::program_options;
+
 int main(int argc, char** argv){
 	srand(time(NULL));
 	
+	char buff[1024*1024];
 	// parse options
 	po::options_description opt("options");
 	std::string target;
@@ -67,6 +77,7 @@ int main(int argc, char** argv){
 		std::cout << opt << std::endl;
 		return 0;
 	}
+	
 	
 	// set options
 	if(vm.count("verbose")){
@@ -89,41 +100,87 @@ int main(int argc, char** argv){
 	}
 	
 
+	std::set<address> proxies;
 	// set target.
 	{
-		char buff[256];
 		int targetfd = create_tcpsocket();
 		connect_ip_port(targetfd, settings.targetip,settings.targetport);
+		
+		const MERDY::tellme_proxy tellme_proxy(OP::TELLME_PROXY);
+		fprintf(stderr,"tellme proxy\n");
+		tuple_send(tellme_proxy, address(settings.targetip,settings.targetport));
+		int masterfd = sockets.get_socket(address(settings.targetip,settings.targetport));
+		
+		msgpack::unpacker pac;
+		pac.reserve_buffer(1024);
+		int readlen = read(masterfd,pac.buffer(),pac.buffer_capacity());
+		pac.buffer_consumed(readlen);
+		if(pac.execute()){
+			msgpack::object msg = pac.data();
+			mp::shared_ptr<msgpack::zone> z(pac.release_zone());
+			pac.reset();
+			const MERDY::ok_tellme_proxy ok_tellme_proxy(msg);
+			proxies = ok_tellme_proxy.get<1>();
+			
+			std::set<address>::iterator it = proxies.begin();
+			while(it != proxies.end()){
+				it->dump();
+				++it;
+			}
+			fprintf(stderr,"%lu proxy\n",proxies.size());
+		}else{
+			fprintf(stderr,"illegal responce from master node\n");
+			exit(1);
+		}
 		{
+			
+			std::set<address>::iterator proxy_it = proxies.begin();
 			file_ptr fp(fopen("testdata.txt","r"));
-			int fd = sockets.get_socket(address(settings.targetip,settings.targetport));
-      
-			sprintf(buff,"CREATE TABLE merdy(name int, age int, gender int,prace int, score int, height int)\n");
-			std::string create = std::string(buff);
-			const msgpack::type::tuple<int,std::string> create_table(OP::DO_SQL,create);
-			tuple_send(create_table, address(settings.targetip,settings.targetport));
-			read(fd,buff,1024);
+			
+			{
+				int fd = sockets.get_socket(*proxy_it);
+				sprintf(buff,"CREATE TABLE merdy(name char, age int, gender int,prace int, score int, height int)\n");
+				std::string create = std::string(buff);
+				const msgpack::type::tuple<int,std::string> create_table(OP::DO_SQL,create);
+				tuple_send(create_table, *proxy_it);
+				read(fd,buff,1024);
+			}
 			for(int i=0;i<10000;i++){
-				sprintf(buff,"INSERT INTO merdy(name,age,gender,prace,score,height)values(%d,%d,%d,%d,%d,%d)\n",rand()%100,rand()%100,rand()%2,rand()%1000,rand()%300,rand()%2);
+				sprintf(buff,"INSERT INTO merdy(name,age,gender,prace,score,height)values(fuga,%d,%d,%d,%d,%d)\n",rand()%100,rand()%2,rand()%1000,rand()%300,rand()%2);
 				std::string sql = std::string(buff);
 				const msgpack::type::tuple<int,std::string> do_sql(OP::DO_SQL,sql);
-				tuple_send(do_sql,address(settings.targetip,settings.targetport));
+				tuple_send(do_sql,*proxy_it);
 				char buff[1024];
+				
+				int fd = sockets.get_socket(*proxy_it);
 				int readsize = read(fd, buff, 1024);
 				buff[readsize] = '\0';
-				fprintf(stderr,"%d,%s \n%s\n----\n",i,sql.c_str(),buff);
+				++proxy_it;
+				if(proxy_it == proxies.end()){
+					proxy_it = proxies.begin();
+				}
+				//fprintf(stderr,"%d,%s \n%s\n----\n",i,sql.c_str(),buff);
 			}
 			fprintf(stderr,"set done.\n");
-			for(int i=0;i<1000;i++){	
-				sprintf(buff,"SELECT age FROM merdy WHERE age > %d & age < 90\n",rand()%50);
+			for(int i=0;i<100000;i++){
+				
+				sprintf(buff,"SELECT age,gender,score,height FROM merdy WHERE gender = 0 & (age < %d | age > %d) & score > 150 \n",rand()%50,(rand()%50)+50);
 				std::string sql = std::string(buff);
 				const msgpack::type::tuple<int,std::string> do_sql(OP::DO_SQL,sql);
-				tuple_send(do_sql,address(settings.targetip,settings.targetport));
-				char buff[1024];
-				int readsize = read(fd, buff, 1024);
-				buff[readsize] = '\0';
-				fprintf(stderr,"%d,%s \n%s\n----\n",i,sql.c_str(),buff);
-				fprintf(stderr,"%d,%s \n%s\n----\n",i,sql.c_str(),buff);
+				
+				tuple_send(do_sql, *proxy_it); 
+				int fd = sockets.get_socket(*proxy_it);
+				
+				int readsize = read(fd, buff, 1024*1024*1024);
+				buff[readsize < 1024 ? readsize : 1024] = '\0';
+				//fprintf(stderr,"%d,%s \n%s\n----\n",i,sql.c_str(),buff);
+				if(i%100 == 0){
+					fprintf(stderr,"%s \n%s\n----\n No.%d query start ",sql.c_str(),buff,i);
+				}
+				++proxy_it;
+				if(proxy_it == proxies.end()){
+					proxy_it = proxies.begin();
+				}
 			}
 		}
 	}

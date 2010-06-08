@@ -5,6 +5,7 @@ enum sql{
 	create,
 	table,
 	insert,
+	count,
 	into,
 	select,
 	from,
@@ -63,7 +64,7 @@ struct segment{
 		return *this;
 	}
 	bool operator==(const sql::sql rhs)const{
-		return query_or_string == type::query && query_ == rhs;
+		return query_ == rhs;
 	}
 	bool operator==(const std::string& rhs)const{
 		return query_or_string == type::string && string_ == rhs;
@@ -191,6 +192,9 @@ private:
 			}else if(token == std::string("VALUES") || token == std::string("values")){
 				DEBUG_OUT("values:");
 				parsed.push_back(segment(sql::values));
+			}else if(token == std::string("COUNT") || token == std::string("count")){
+				DEBUG_OUT("count:");
+				parsed.push_back(segment(sql::count));
 			}else if(token == std::string("INSERT") || token == std::string("insert")){
 				DEBUG_OUT("insert:");
 				parsed.push_back(segment(sql::insert));

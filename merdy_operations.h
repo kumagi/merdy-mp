@@ -16,7 +16,10 @@ enum merdy_operations{
 	DELETE_SCHEMA, // 
 	ADD_ME_DY, // 
 	ADD_ME_MER, // 
+	ADD_ME_PROXY,
 	TELLME_HASHES,
+	OK_TELLME_PROXY,
+	
 		
 	// dynamo
 	//setting
@@ -30,8 +33,10 @@ enum merdy_operations{
 	SET_COORDINATE, // 
 	//reading
 	GET_DY,
+	GET_MULTI_DY,
 	SEND_DY,
 	FOUND_DY,
+	FOUND_MULTI_DY,
 	NOTFOUND_DY,
 	DEL_DY,
 	
@@ -45,6 +50,7 @@ enum merdy_operations{
 	GET_RANGE,
 	TELLME_RANGE,
 	TELLME_ASSIGN,
+	TELLME_PROXY,
 	OK_TELLME_RANGE,
 	NG_TELLME_RANGE,
 	GIVEME_RANGE,
@@ -92,19 +98,22 @@ namespace MERDY{
 // * -> master
 typedef msgpack::type::tuple<int,address> add_me_dy;
 typedef msgpack::type::tuple<int,address> add_me_mer;
+typedef msgpack::type::tuple<int,address> add_me_proxy;
 typedef msgpack::type::tuple<int,std::string,std::map<attr_range,address> > ok_create_schema;
-typedef msgpack::type::tuple<int,std::string> ng_create_schema;
+typedef msgpack::type::tuple<int,std::string,std::map<attr_range,address> > ng_create_schema;
 typedef msgpack::type::tuple<int,std::string,address> tellme_assign;
 typedef msgpack::type::tuple<int,std::string,address> tellme_range;
 typedef msgpack::type::tuple<int,std::string> ok_assign_range;
 typedef msgpack::type::tuple<int,std::string> ng_assign_range;
 typedef msgpack::type::tuple<int,address> tellme_hashes;
+typedef msgpack::type::tuple<int> tellme_proxy; // client -> master
 
 // master -> dynamo/proxy
 typedef msgpack::type::tuple<int,std::map<uint64_t,address> > update_hashes;
 
 // proxy/dynamo -> dynamo
 typedef msgpack::type::tuple<int,uint64_t,address> get_dy;
+typedef msgpack::type::tuple<int,std::list<uint64_t>,address> get_multi_dy;
 typedef msgpack::type::tuple<int,std::set<address> > update_mer_hub;
 typedef msgpack::type::tuple<int,uint64_t,std::unordered_map<std::string,attr>,address> set_dy;
 typedef msgpack::type::tuple<int,uint64_t,std::unordered_map<std::string,attr>,address> set_coordinate;
@@ -115,6 +124,7 @@ typedef msgpack::type::tuple<int,uint64_t,address> send_dy;
 typedef msgpack::type::tuple<int,uint64_t> ok_put_dy;
 typedef msgpack::type::tuple<int,uint64_t> ok_set_dy;
 typedef msgpack::type::tuple<int,uint64_t,value_vclock,address> found_dy;
+typedef msgpack::type::tuple<int,std::list<uint64_t>,std::list<value_vclock>,address> found_multi_dy;
 typedef msgpack::type::tuple<int,uint64_t,address> notfound_dy;
 
 // master -> mercury
@@ -131,6 +141,7 @@ typedef msgpack::type::tuple<int,std::string,int,std::list<mercury_kvp> > ok_get
 typedef msgpack::type::tuple<int,std::string,int,std::list<mercury_kvp> > ok_get_attr;
 typedef msgpack::type::tuple<int,std::string,int> ok_set_attr;
 typedef msgpack::type::tuple<int,std::string,attr_range> ok_tellme_range;
+typedef msgpack::type::tuple<int,std::set<address> > ok_tellme_proxy;
 typedef msgpack::type::tuple<int,std::string> ng_tellme_range;
 typedef msgpack::type::tuple<int,std::string,attr_range, std::map<attr_range, address>, address > assign_range;
 typedef msgpack::type::tuple<int,std::string,std::map<attr_range,address> > assignment;

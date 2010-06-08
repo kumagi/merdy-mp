@@ -39,6 +39,7 @@ static struct settings{
 
 mp::sync< std::set<address> > dynamo_nodes;
 mp::sync< std::set<address> > mercury_nodes;
+mp::sync< std::set<address> > proxy_nodes;
 
 mp::sync< std::map<std::string,std::map<attr_range,address> > > mercury_assign;
 
@@ -62,9 +63,12 @@ public:
 	main_handler(int _fd,mp::wavy::loop* _lo):
 		mp::wavy::handler(_fd),lo(_lo){ }
 	
-	void event_handle(int fd, msgpack::object obj, msgpack::zone* z){
+	void event_handle(int fd, msgpack::object obj, msgpack::zone*){
 		msgpack::type::tuple<int> out(obj);
 		int operation = out.get<0>();
+		
+		
+		volatile enum OP::merdy_operations op = (OP::merdy_operations)operation;
 		switch (operation){
 		case OP::CREATE_SCHEMA:{
 			const MERDY::create_schema create_schema(obj);
@@ -77,7 +81,7 @@ public:
 				if(mercury_assign_r->find(name) != mercury_assign_r->end()){
 					fprintf(stderr,"error: attribute [%s] already exists.\n",name.c_str());
 					
-					const MERDY::ng_create_schema ng_create_schema(OP::NG_CREATE_SCHEMA, name);
+					const MERDY::ng_create_schema ng_create_schema(OP::NG_CREATE_SCHEMA, name, mercury_assign_r->find(name)->second);
 					tuple_send(ng_create_schema, org);
 					break;
 				}
@@ -212,6 +216,19 @@ public:
 			DEBUG_OUT("done.\n");
 			break;
 		}
+		case OP::TELLME_PROXY:{
+			DEBUG_OUT("TELLME_PROXY:");
+			
+			mp::sync< std::set<address> >::ref proxy_nodes_r(proxy_nodes);
+			const msgpack::type::tuple<int,std::set<address> > ok_tellme_proxy(OP::OK_TELLME_PROXY,*proxy_nodes_r);
+			
+			
+			msgpack::vrefbuffer vbuf;
+			msgpack::pack(vbuf, ok_tellme_proxy);
+			const struct iovec* iov(vbuf.vector());
+			::writev(fd, iov, vbuf.vector_size());
+			break;
+		}
 		case OP::ADD_ME_DY:{// op, address
 			DEBUG_OUT("ADD_ME_DY");
 			const MERDY::add_me_dy add_me_dy(obj);
@@ -257,6 +274,16 @@ public:
 			tuple_send(ok_add_me_mer, newnode);
 			break;
 		}
+		case OP::ADD_ME_PROXY:{
+			DEBUG_OUT("ADD_ME_PROXY");
+			const MERDY::add_me_mer add_me_proxy(obj);
+			const address& newnode = add_me_proxy.get<1>();
+			
+			mp::sync< std::set<address> >::ref proxy_nodes_r(proxy_nodes);
+			proxy_nodes_r->insert(newnode);
+			
+			break;
+		}
 		case OP::TELLME_ASSIGN:{
 			DEBUG_OUT("TELLME_ASSIGN");
 			const MERDY::tellme_assign tellme_assign(obj);
@@ -295,7 +322,7 @@ public:
 			while(true) {
 				if(m_pac.execute()) {
 					msgpack::object msg = m_pac.data();
-					std::auto_ptr<msgpack::zone> z( m_pac.release_zone() );
+					mp::shared_ptr<msgpack::zone> z( m_pac.release_zone() );
 					m_pac.reset();
 
 					e.more();  //e.next();
@@ -317,6 +344,10 @@ public:
 			}
 		}catch(...){
 			DEBUG_OUT("fd:%d ",fd());;
+			int removing = sockets.remove(fd());
+			if(!removing){
+				DEBUG_OUT("no socket found\n");
+			}
 			perror("exception ");
 			e.remove();
 		}
@@ -335,7 +366,6 @@ void on_accepted(int fd, int err, mp::wavy::loop* lo)
 		int on = 1;
 		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
 		std::tr1::shared_ptr<main_handler> p = lo->add_handler<main_handler>(fd,lo);
-		
 	} catch (...) {
 		fprintf(stderr,"listening socket error");
 		::close(fd);

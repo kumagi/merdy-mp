@@ -1,5 +1,5 @@
 CC=g++44
-OPTS=-O0 -fexceptions -std=c++0x -march=x86-64 -g
+OPTS=-O4 -fexceptions -std=c++0x -march=x86-64 -g
 LD=-lmpio -lmsgpack -pthread -lboost_program_options
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \
 	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum
@@ -23,6 +23,8 @@ client:client.o tcp_wrap.o
 	$(CC) client.o tcp_wrap.o -o client $(OPTS) $(WARNS) $(LD)
 random:random_client.o tcp_wrap.o
 	$(CC) random_client.o tcp_wrap.o -o random $(OPTS) $(WARNS) $(LD)
+main:main.o Apriori.o
+	$(CC) main.o Apriori.o -o main $(OPTS) $(WARNS) $(LD)
 
 dynamo_test:dynamo_test.o tcp_wrap.o
 	$(CC) dynamo_test.o tcp_wrap.o -o dynamo_test $(OPTS) $(WARNS) $(LD)
@@ -40,6 +42,10 @@ client.o:client.cpp
 	$(CC) client.cpp -o client.o -c $(OPTS) $(WARNS)
 random_client.o:random_client.cpp 
 	$(CC) random_client.cpp -o random_client.o -c $(OPTS) $(WARNS)
+main.o:main.cpp
+	$(CC) main.cpp -o main.o -c $(OPTS) $(WARNS)
+Apriori.o:Apriori.cpp
+	$(CC) Apriori.cpp -o Apriori.o -c  $(OPTS) $(WARNS)
 
 dynamo_test.o:dynamo_test.cpp tcp_wrap.o $(HEADS)
 	$(CC) dynamo_test.cpp -o dynamo_test.o -c $(OPTS) $(WARNS)
