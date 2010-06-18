@@ -10,7 +10,7 @@ target:worker
 target:proxy
 target:client
 target:random
-#target:dynamo_test
+target:dynamo_test
 #target:mercury_test
 
 master:master.o tcp_wrap.o

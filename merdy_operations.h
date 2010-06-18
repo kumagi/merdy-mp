@@ -9,13 +9,14 @@ enum flag{
 namespace OP{
 enum merdy_operations{
 	// master
-	SEND_DY_LIST, // 
-	SEND_HASHES, // 
-	SEND_MER_LIST, // 
-	CREATE_SCHEMA, // 
-	DELETE_SCHEMA, // 
-	ADD_ME_DY, // 
-	ADD_ME_MER, // 
+    INVALID,
+	SEND_DY_LIST,
+	SEND_HASHES,
+	SEND_MER_LIST,
+	CREATE_SCHEMA,
+	DELETE_SCHEMA,
+	ADD_ME_DY,
+	ADD_ME_MER,
 	ADD_ME_PROXY,
 	TELLME_HASHES,
 	OK_TELLME_PROXY,
@@ -23,14 +24,14 @@ enum merdy_operations{
 		
 	// dynamo
 	//setting
-	UPDATE_HASHES, // 
-	OK_ADD_ME_DY, // 
+	UPDATE_HASHES,
+	OK_ADD_ME_DY,
 	//writing
 	SET_DY, // search cordinate
-	OK_SET_DY, // 
+	OK_SET_DY,
 	PUT_DY, // store data without everything
-	OK_PUT_DY, // 
-	SET_COORDINATE, // 
+	OK_PUT_DY,
+	SET_COORDINATE,
 	//reading
 	GET_DY,
 	GET_MULTI_DY,

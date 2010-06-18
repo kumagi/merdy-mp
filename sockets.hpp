@@ -17,11 +17,12 @@ public:
 		int fd = get_socket(ad);
 		lo->write(fd, buff,size);
 	}
-	inline void writev(const address& ad ,const struct iovec* vec, size_t veclen){
+	inline void writev(const address& ad ,const struct iovec* const vec, size_t veclen){
 		int fd = get_socket(ad);
 		
 		int result = ::writev(fd, vec,veclen);
 		if(result < 1){
+            perror("writev");
 			close(fd);
 			fprintf(stderr,"reconnect: ");
 			ad.dump();
@@ -36,13 +37,13 @@ public:
 			//fprintf(stderr,"%d:%d byte\n",fd,result);
 		}
 	}
-	
+
 	template<class T>
-	inline void writev(const address& ad ,const struct iovec* vec, size_t veclen, mp::shared_ptr<T>& zone){
+	inline void writev(const address& ad ,const iovec* const vec, size_t veclen, mp::shared_ptr<T>& zone){
 		int fd = get_socket(ad);
-		
 		lo->writev(fd, vec,veclen,zone);
 	}
+
 	inline int get_socket(const address& ad){
 		mp::sync< std::unordered_map<address, int,address_hash> >::ref fds_r(fds);
 		std::unordered_map<address,int>::const_iterator it = fds_r->find(ad);

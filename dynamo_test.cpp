@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <mp/wavy.h>
 #include <mp/sync.h>
+#include <unordered_map>
 #include <unordered_set>
 #include <msgpack.hpp>
+#include <boost/timer.hpp>
 #include "hash64.h"
 #include "hash32.h"
 #include "random64.h"
@@ -12,12 +14,16 @@
 #include "merdy_operations.h"
 #include <limits.h>
 #include "debug_mode.h"
-#include "dynamo_objects.hpp"
 #include "mercury_objects.hpp"
+#include "dynamo_objects.hpp"
+#include "unordered_map.hpp"
+
+#define MES_MAX 1024*1024
 
 
 #include <boost/program_options.hpp>
-#include <unordered_map>
+
+mp::wavy::loop* g_loop;
 
 
 static const char interrupt[] = {-1,-12,-1,-3,6};
@@ -36,6 +42,7 @@ mp::sync< std::map<uint64_t,address> > dy_hash;
 mp::sync< std::map<std::string,std::list<address> > > mercury_assign;
 volatile int hash_flag = 0;
 volatile int set_flag = 0;
+volatile int get_flag = 0;
 
 template<typename tuple>
 inline void tuple_send(const tuple& t, const address& ad){
@@ -93,12 +100,13 @@ public:
 		case OP::ASSIGNMENT:{
 			DEBUG_OUT("ASSIGNMENT:");
 			MERDY::assignment assignment(obj);
+            /*
 			std::string& name = assignment.get<1>();
 			std::map<attr_range,address>& assign = assignment.get<2>();
 			
 			mp::sync< std::map<std::string,std::list<address> > >::ref mercury_assign_r(mercury_assign);
 			mercury_assign_r->insert(std::pair<std::string, std::map<attr_range,address> >(name, assign));
-			
+			*/
 			DEBUG_OUT("ok\n");
 			break;
 		}
@@ -110,8 +118,11 @@ public:
 			break;
 		}
 		case OP::OK_SET_DY:{// op, key, address
-			static int num = 1020;
-			DEBUG_OUT("OK_SET_DY:%d ",num);
+			const MERDY::ok_set_dy& ok_set_dy(obj);
+			const uint64_t& key = ok_set_dy.get<1>();
+
+			static int num = MES_MAX;
+			DEBUG_OUT("OK_SET_DY:%lu\n ",key);
 			// responce for fowarding
 			lock_mut lock(&mut);
 			num--;
@@ -121,22 +132,17 @@ public:
 			break;
 		}
 		case OP::FOUND_DY:{ // op, key, vcvalue, address
-			static int found = 1020;
+			static int found = MES_MAX;
 			DEBUG_OUT("FOUND_DY:");
 			const MERDY::found_dy found_dy(obj);
 			const uint64_t& key = found_dy.get<1>();
 			const value_vclock& value = found_dy.get<2>();
 			const address& org = found_dy.get<3>();
-			DEBUG_OUT("%lu -> %s ",key,value.get_string().c_str());
-			if(hash64(value.get_string()) == key){
-				DEBUG_OUT("ok\n");
-			}else{
-				DEBUG_OUT("ng\n");
-			}
-			
+            
 			lock_mut lock(&mut);
 			found--;
 			if(found == 0){
+                get_flag = 1;
 				DEBUG_OUT("done.");
 			}
 			break;
@@ -155,7 +161,7 @@ public:
 			
 			fprintf(stderr," for %s ",name.c_str());
 			for(std::list<mercury_kvp>::const_iterator it = kvps.begin(); it != kvps.end(); ++it){
-				fprintf(stderr,"%s -> %lu\n",it->get_attr().get_string().c_str(),it->get_data());
+				fprintf(stderr,"%s -> %lu\n",it->get_attr().get_string().c_str(),it->get_hash());
 			}
 			fprintf(stderr,"done.\n");
 			break;
@@ -169,7 +175,7 @@ public:
 			//std::cout << obj << std::endl;
 			fprintf(stderr," for [%s]\n",name.c_str());
 			for(std::list<mercury_kvp>::const_iterator it = kvps.begin(); it != kvps.end(); ++it){
-				fprintf(stderr,"%s -> %lu\n",it->get_attr().get_string().c_str(),it->get_data());
+				fprintf(stderr,"%s -> %lu\n",it->get_attr().get_string().c_str(),it->get_hash());
 			}
 			fprintf(stderr,"done.\n");
 			break;
@@ -212,9 +218,9 @@ public:
 	}
 };
 
-void on_accepted(int fd, int err, mp::wavy::loop* lo)
+void on_accepted(int fd, int , mp::wavy::loop* lo)
 {
-	fprintf(stderr,"accept %d %d\n",fd,err);
+    //	fprintf(stderr,"accept %d %d\n",fd,err);
 	if(fd < 0) {
 		perror("accept error");
 		exit(1);
@@ -232,46 +238,107 @@ void on_accepted(int fd, int err, mp::wavy::loop* lo)
 	}
 }
 
+address search_address(uint64_t key){
+	mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
+	key &= ~((1<<8)-1);
+	std::map<uint64_t,address>::const_iterator hash_it = dy_hash_r->upper_bound(key);
+	if(hash_it == dy_hash_r->end()){
+		hash_it = dy_hash_r->begin();
+	}
+	if(hash_it->second == address(1,0)){
+		std::map<uint64_t,address>::const_iterator it = dy_hash_r->begin();
+		while(it != dy_hash_r->end()){
+			if(key < it->first) {
+				++it;
+				continue;
+			}
+			DEBUG_OUT("%llu->",(unsigned long long)it->first);
+			DEBUG(it->second.dump());
+			break;
+		}
+		assert(!"arien");
+	}
+	return hash_it->second;
+}
+
+template<typename tuple>
+inline void tuple_send_async(const tuple* const t, const address& ad, mp::shared_ptr<msgpack::zone>& z){
+	msgpack::vrefbuffer vbuf;
+	msgpack::pack(vbuf, *t);
+	const struct iovec* iov(vbuf.vector());
+	sockets.writev(ad, iov, vbuf.vector_size(),z);
+}
+
+template<typename tuple>
+inline void tuple_dump(const tuple& t){
+    msgpack::sbuffer sb;
+    msgpack::pack(sb,t);
+
+    int len = sb.size();
+    const char* ptr = sb.data();
+
+    fprintf(stderr,"{%d}[", len);
+    while(len > 0){
+        fprintf(stderr,"%02X", (*ptr) & 0x000000ff);
+        ++ptr;
+        --len;
+    }
+    fprintf(stderr,"]\n");
+    
+    assert(sb.size() > 22);
+}
+
 void* testbench(void*){
+    boost::timer t;
 	{// set_dy:{ // op, attr_name, list<mercury_kvp>, address
 		MERDY::tellme_hashes tellme_hashes(OP::TELLME_HASHES, address(settings.myip,settings.myport));
 		tuple_send(tellme_hashes,address(settings.targetip,settings.targetport));
 		while(!hash_flag);
-		
-		DEBUG_OUT("start to save\n");
-		mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
-		std::map<uint64_t,address>::iterator dy_target = dy_hash_r->begin();
-		for(int i=0;i<1020;i++){
-			char buff[256];
-			sprintf(buff,"k%d",i);
-			uint64_t key = hash64(std::string(buff));
-			const MERDY::set_dy set_dy(OP::SET_DY,key,std::string(buff), address(settings.myip,settings.myport));
-			tuple_send(set_dy,dy_target->second);
-			++dy_target;
-			if(dy_target == dy_hash_r->end()){
-				dy_target = dy_hash_r->begin();
-			}
-		}
-		
-		while(!set_flag);
-		
+    }
+    {
+        std::unordered_map<std::string, attr> dy_tuple;
+        dy_tuple.insert(std::pair<std::string,attr>(std::string("hoge"), attr("t")));
+
+        t.restart();
+
+        {
+            mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
+            DEBUG_OUT("start SET_DY 1000 times\n");
+            for(int i=0;i<MES_MAX;i++){
+                uint64_t key = i;//hash64(i);
+                address target = search_address(key);
+                const MERDY::set_dy* const set_dy = z->allocate<MERDY::set_dy>(OP::SET_DY, key, dy_tuple, address(settings.myip,settings.myport));
+                tuple_dump(*set_dy);
+                tuple_send_async(set_dy, target, z);
+
+                //const MERDY::set_dy set_dy(OP::SET_DY, 0xba, dy_tuple, address(settings.myip,settings.myport));
+                //tuple_send(set_dy,target);
+            }
+        }
+        while(!set_flag){usleep(1);};
+        fprintf(stderr,"set time : %lf\n",t.elapsed());
 	}
 	{
+        mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
+        t.restart();
 		mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
 		std::map<uint64_t,address>::iterator dy_target = dy_hash_r->begin();
-		for(int i=0;i<1020;i++){
+		for(int i=0;i<MES_MAX;i++){
 			char buff[256];
 			sprintf(buff,"k%d",i);
-			uint64_t key = hash64(std::string(buff));
-			const MERDY::get_dy get_dy(OP::GET_DY,key, address(settings.myip,settings.myport));
-			tuple_send(get_dy,dy_target->second);
+			uint64_t key = hash64(i);
+			const MERDY::get_dy* get_dy = z->allocate<MERDY::get_dy>(OP::GET_DY, key, address(settings.myip,settings.myport));
+			tuple_send_async(get_dy,dy_target->second,z);
 			++dy_target;
 			if(dy_target == dy_hash_r->end()){
 				dy_target = dy_hash_r->begin();
 			}
 		}
+        while(!get_flag);
+        fprintf(stderr,"get time : %lf\n",t.elapsed());
 	}
 	DEBUG_OUT("finish!");
+    exit(0);
 	return NULL;
 }
 
@@ -304,7 +371,6 @@ int main(int argc, char** argv){
 	}
 	settings.targetip = aton(target.c_str());
 
-	
 	// view options
 	printf("verbose:%d\naddress:[%s]\n",
 		   settings.verbose,ntoa(settings.myip));
@@ -320,6 +386,7 @@ int main(int argc, char** argv){
 	// init mpio
 	using namespace mp::placeholders;
 	mp::wavy::loop lo;
+    g_loop = &lo;
 	sockets.set_wavy_loop(&lo);
 	
 	struct sockaddr_in addr;
@@ -337,41 +404,6 @@ int main(int argc, char** argv){
 	pthread_create(&test,NULL,testbench,NULL);
 	pthread_detach(test);
 	
-	lo.run(2);
-	{
-		
-		/*
-		  for(int i=0;i<4096;++i){
-		  {
-		  char key[64];
-		  char val[64];
-		  sprintf(key,"k%d",i);
-		  sprintf(val,"v%d",i);
-		  msgpack::type::tuple<int,std::string,std::string> set_dy((int)OP::SET_DY, std::string(key),std::string(val));
-				
-		  msgpack::vrefbuffer vbuf;
-		  msgpack::pack(vbuf, set_dy);
-		  const struct iovec* iov(vbuf.vector());
-		  writev(targetfd, iov, vbuf.vector_size());
-			
-		  int recvlen = read(targetfd,buff,256);
-		  buff[recvlen] = '\0';
-		  fprintf(stderr,"received %d byte [%s]\n",recvlen,buff);
-		  }
-		  {
-		  char key[64];
-		  sprintf(key,"k%d",i);
-		  msgpack::type::tuple<int,std::string> get_dy((int)OP::GET_DY, std::string(key));
-		  msgpack::vrefbuffer vbuf;
-		  msgpack::pack(vbuf, get_dy);
-		  const struct iovec* iov(vbuf.vector());
-		  writev(targetfd, iov, vbuf.vector_size());
-			
-		  int recvlen = read(targetfd,buff,256);
-		  buff[recvlen] = '\0';
-		  fprintf(stderr,"received %d byte [%s]\n",recvlen,buff);
-		  }
-		  }
-		*/
-	}
-} 
+    while(1){lo.run_once();}
+	lo.run(4);
+}

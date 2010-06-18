@@ -61,7 +61,7 @@ void dump_hashes(){
 		it++;
 	}
 }
-
+/*
 template<typename tuple>
 inline void tuple_send(const tuple& t, const address& ad){
 	msgpack::vrefbuffer vbuf;
@@ -69,7 +69,7 @@ inline void tuple_send(const tuple& t, const address& ad){
 	const struct iovec* iov(vbuf.vector());
 	sockets.writev(ad, iov, vbuf.vector_size());
 }
-
+*/
 
 pthread_mutex_t mut;
 class lock_mut{
@@ -82,6 +82,18 @@ public:
 		pthread_mutex_unlock(mutex);
 	}
 };
+
+void sbuff_dump(const msgpack::sbuffer& sb){
+    int len = sb.size();
+    const char* ptr = sb.data();
+    fprintf(stderr,"sb[");
+    while(len > 0){
+        fprintf(stderr,"%02X", (*ptr) & 0x000000ff);
+        ++ptr;
+        --len;
+    }
+    fprintf(stderr,"]\n");
+}
 
 
 template<typename tuple>
@@ -102,8 +114,8 @@ public:
 	}
 	
 	void event_handle(int , msgpack::object obj, mp::shared_ptr<msgpack::zone> z){
-		msgpack::type::tuple<int> op(obj);
-		int operation = op.get<0>();
+		const msgpack::type::tuple<int>& op(obj);
+		const int operation = op.get<0>();
 		switch (operation){
 			/* ---------------------- */
 			// Dynamo operations
@@ -126,6 +138,7 @@ public:
 			fprintf(stderr,"dynamo status: ok");
 			break;
 		}
+
 		case OP::SET_DY:{// op, key, value
 			DEBUG_OUT("SET_DY:");
 			// search coordinator, and forward
@@ -134,13 +147,13 @@ public:
 			const std::unordered_map<std::string,attr>& value = set_dy.get<2>();
 			const address& org = set_dy.get<3>();
 			
-			DEBUG(std::cout << "key[" << key << "] value[");
+			DEBUG(std::cerr << "key[" << key << "] value[");
 			for(std::unordered_map<std::string,attr>::const_iterator it = value.begin(); it!=value.end(); ++it){
 				DEBUG_OUT(" [%s->",it->first.c_str());
 				DEBUG(it->second.dump());
 				DEBUG_OUT("]");
 			}
-			DEBUG(std::cout << "]" << std::endl);
+			DEBUG(std::cerr << "] ");
 			
 			uint64_t hash = hash64(key);
 			hash &= ~((1<<8)-1);
@@ -155,10 +168,12 @@ public:
 				set_fwd_r->insert(std::pair<uint64_t,address>(key,org));
 			}
 			
-			MERDY::set_coordinate set_coordinate((int)OP::SET_COORDINATE, key, value, address(settings.myip,settings.myport));
-			tuple_send(set_coordinate,coordinator);
+			const MERDY::set_coordinate* set_coordinate = z->allocate<MERDY::set_coordinate>(OP::SET_COORDINATE, key, value, address(settings.myip,settings.myport));
+			//tuple_send_async(set_coordinate,coordinator,z);
+            DEBUG_OUT("send to ");
+            coordinator.dump();
 			
-			DEBUG_OUT("\n");
+			DEBUG_OUT(" done\n");
 			break;
 		}
 		case OP::OK_SET_DY:{// op, key, address
@@ -174,10 +189,11 @@ public:
 				break;
 			}
 			{
-				MERDY::ok_set_dy ok_set_dy(OP::OK_SET_DY,key);
-				tuple_send(ok_set_dy,it->second);
+				const MERDY::ok_set_dy* ok_set_dy = z->allocate<MERDY::ok_set_dy>(OP::OK_SET_DY,key);
+				tuple_send_async(ok_set_dy,it->second,z);
 				set_fwd_r->erase(it);
 			}
+			DEBUG_OUT(" done\n");
 			break;
 		}
 		case OP::SET_COORDINATE:{// op, key, value, address
@@ -217,12 +233,11 @@ public:
 			for(int i=DY::NUM; i>0; --i){
 				const address& target = it->second;
 				if(already_send.find(target) == already_send.end()){
-					MERDY::put_dy put_dy((int)OP::PUT_DY, key, vcvalue, address(settings.myip,settings.myport));
+					const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, vcvalue, address(settings.myip,settings.myport));
+					tuple_send_async(put_dy, target, z);
 					DEBUG_OUT("%llu ->",(unsigned long long)key);
 					DEBUG(vcvalue.dump());
-					tuple_send(put_dy, target);
 					DEBUG(target.dump());
-					DEBUG_OUT("\n");
 					already_send.insert(target);
 				}else {
 					++i;
@@ -237,7 +252,7 @@ public:
 					break;
 				}
 			}
-			DEBUG_OUT("\n");
+			DEBUG_OUT(" done\n");
 			break;
 		}
 		case OP::PUT_DY:{// op, key, value, origin address
@@ -256,17 +271,17 @@ public:
 					key_value_r->insert(std::pair<uint64_t, value_vclock>(key, value_vclock(value)));
 					DEBUG_OUT("saved:%llu-> ",(unsigned long long)key);
 					DEBUG(value.dump(););
-					DEBUG_OUT(" new!\n");
+					DEBUG_OUT(" new! ");
 				}else{
 					it->second.update(value.get_value());
 					DEBUG_OUT("saved:%llu->",(unsigned long long)key);
 					DEBUG(value.dump(););
-					DEBUG_OUT("\n");
 				}
 			}
 			
-			MERDY::ok_put_dy ok_put_dy(OP::OK_PUT_DY, key);
-			tuple_send(ok_put_dy,ad);
+			const MERDY::ok_put_dy* ok_put_dy = z->allocate<MERDY::ok_put_dy>(OP::OK_PUT_DY, key);
+			tuple_send_async(ok_put_dy,ad, z);
+			DEBUG_OUT(" done\n");
 			break;
 		}
 		case OP::OK_PUT_DY:{// op, key
@@ -282,15 +297,16 @@ public:
 			++(it->second.first);
 			if(it->second.first == DY::WRITE){
 				// write ok
-				DEBUG_OUT("write ok:[%llu]\n",(unsigned long long)key);
-				MERDY::ok_set_dy ok_set_dy(OP::OK_SET_DY, key);
-				tuple_send(ok_set_dy,it->second.second);
+				DEBUG_OUT("write ok:[%llu] ",(unsigned long long)key);
+				const MERDY::ok_set_dy* ok_set_dy = z->allocate<MERDY::ok_set_dy>(OP::OK_SET_DY, key);
+				tuple_send_async(ok_set_dy,it->second.second,z);
 			}else if(it->second.first == DY::NUM){
 				put_fwd_r->erase(it);
-				DEBUG_OUT("erased\n");
+				DEBUG_OUT("complate to saving %lu", key);
 			}else{
-				DEBUG_OUT("ok %d\n",it->second.first);
+				DEBUG_OUT("saving %d ok  rest:%d",it->second.first, DY::WRITE - it->second.first);
 			}
+			DEBUG_OUT(" done\n");
 			break;
 		}
 		case OP::GET_DY:{
@@ -313,8 +329,8 @@ public:
 			std::unordered_set<address, address_hash> sentlist;
 			for(int i=DY::NUM; i>0; --i){
 				if(sentlist.find(it->second) == sentlist.end()){
-					MERDY::send_dy send_dy((int)OP::SEND_DY, key, address(settings.myip,settings.myport));
-					tuple_send(send_dy, it->second);
+					const MERDY::send_dy* send_dy = z->allocate<MERDY::send_dy>(OP::SEND_DY, key, address(settings.myip,settings.myport));
+					tuple_send_async(send_dy, it->second,z);
 					sentlist.insert(it->second);
 				}else{++i;}
 				++it;
@@ -328,14 +344,15 @@ public:
 				}
 			}
 			
-			DEBUG_OUT("key:%llu\n",(unsigned long long)key);
+			DEBUG_OUT("key:%llu",(unsigned long long)key);
+			DEBUG_OUT(" done\n");
 			break;
 		}
 		case OP::GET_MULTI_DY:{
 			DEBUG_OUT("GET_MULTI_DY:");
-			const MERDY::get_multi_dy& get_multi_dy(obj);
-			const std::list<uint64_t>& key_list = get_multi_dy.get<1>();
-			const address& org = get_multi_dy.get<2>();
+			//const MERDY::get_multi_dy& get_multi_dy(obj);
+			//const std::list<uint64_t>& key_list = get_multi_dy.get<1>();
+			//const address& org = get_multi_dy.get<2>();
 			break;
 		}
 		case OP::SEND_DY:{
@@ -348,11 +365,11 @@ public:
 			std::unordered_multimap<uint64_t, value_vclock>::const_iterator ans
 				= key_value_r->find(key);
 			if(ans == key_value_r->end()){
-				const MERDY::notfound_dy notfound_dy((int)OP::NOTFOUND_DY, key, address(settings.myip,settings.myport));
-				tuple_send(notfound_dy, org);
+				const MERDY::notfound_dy* notfound_dy = z->allocate<MERDY::notfound_dy>((int)OP::NOTFOUND_DY, key, address(settings.myip,settings.myport));
+				tuple_send_async(notfound_dy, org,z);
 			}else{
-				const MERDY::found_dy found_dy((int)OP::FOUND_DY, key, ans->second, address(settings.myip,settings.myport));
-				tuple_send(found_dy, org);
+				const MERDY::found_dy* found_dy = z->allocate<MERDY::found_dy>((int)OP::FOUND_DY, key, ans->second, address(settings.myip,settings.myport));
+				tuple_send_async(found_dy, org,z);
 				DEBUG_OUT("found ");
 				DEBUG(ans->second.dump());
 				DEBUG_OUT("\n");
@@ -378,8 +395,8 @@ public:
 			}
 			int result = it->second.update(value);
 			if(result == -1){ // old data found -> read repair
-				const MERDY::put_dy put_dy(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
-				tuple_send(put_dy, org);
+				const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
+				tuple_send_async(put_dy, org,z);
 			}
 			if(it->second.count_eq(DY::READ)){
 				DEBUG_OUT("counter:%d ",it->second.get_cnt());
@@ -391,8 +408,8 @@ public:
 				}else{
 					key_value_r->insert(std::pair<uint64_t, value_vclock>(it->first,it->second.get_value()));
 				}
-				const MERDY::found_dy found_dy(OP::FOUND_DY,key,it->second.get_vcvalue(),address(settings.myip,settings.myport));
-				tuple_send(found_dy, it->second.org);
+				const MERDY::found_dy* found_dy = z->allocate<MERDY::found_dy>(OP::FOUND_DY,key,it->second.get_vcvalue(),address(settings.myip,settings.myport));
+				tuple_send_async(found_dy, it->second.org, z);
 				DEBUG(it->second.dump());
 				send_fwd_r->erase(it);
 				DEBUG_OUT("answered ok\n");
@@ -415,8 +432,8 @@ public:
 			
 			if(it != send_fwd_r->end()){
 				// read repair
-				const MERDY::put_dy put_dy((int)OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
-				tuple_send(put_dy, org);
+				const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
+				tuple_send_async(put_dy, org, z);
 			}
 			break;
 		}
@@ -471,8 +488,8 @@ public:
 					DEBUG(it_mi->second.get_range().dump());
 					DEBUG_OUT("\n");
 					
-					const MERDY::ok_set_attr ok_set_attr(OP::OK_SET_ATTR, name, identifier);
-					tuple_send(ok_set_attr, org);
+					const MERDY::ok_set_attr* ok_set_attr = z->allocate<MERDY::ok_set_attr>(OP::OK_SET_ATTR, name, identifier);
+					tuple_send_async(ok_set_attr, org, z);
 					break;
 				}
 				++it_mi;
@@ -494,8 +511,8 @@ public:
 				
 				assert(target->second != address(settings.myip,settings.myport) && target != it_mi->second.get_hubs().end());
 				
-				const MERDY::set_attr pass_set_attr(OP::SET_ATTR,name,identifier,kvp,address(settings.myip,settings.myport));
-				tuple_send(pass_set_attr,target->second);
+				const MERDY::set_attr* pass_set_attr = z->allocate<MERDY::set_attr>(OP::SET_ATTR,name,identifier,kvp,address(settings.myip,settings.myport));
+				tuple_send_async(pass_set_attr,target->second, z);
 			}
 			DEBUG_OUT("done\n");
 			break;
@@ -512,8 +529,8 @@ public:
 			assert(it != mer_set_fwds_r->end());
 			it->second.cnt--;
 			if(it->second.cnt == 0){
-				MERDY::ok_set_attr ok_set_attr(OP::OK_SET_ATTR, name, identifier);
-				tuple_send(ok_set_attr,it->second.org);
+				const MERDY::ok_set_attr* ok_set_attr = z->allocate<MERDY::ok_set_attr>(OP::OK_SET_ATTR, name, identifier);
+				tuple_send_async(ok_set_attr, it->second.org, z);
 				mer_set_fwds_r->erase(it);
 			}
 			break;
@@ -716,19 +733,19 @@ public:
 				fowarding->toSend.merge(ans); 
 				std::list<std::pair<address,std::list<attr> > >::iterator fwd_it = foward_list.begin(); 
 				while(fwd_it != foward_list.end()){
-					const MERDY::get_attr get_attr(OP::GET_ATTR, name, identifier, fwd_it->second, address(settings.myip,settings.myport));
-					tuple_send(get_attr, fwd_it->first);
+					const MERDY::get_attr* get_attr = z->allocate<MERDY::get_attr>(OP::GET_ATTR, name, identifier, fwd_it->second, address(settings.myip,settings.myport));
+					tuple_send_async(get_attr, fwd_it->first, z);
 					++fwd_it;
 				}
 				fowarding->cnt--;
 			}else if(!ans.empty()){
-				const MERDY::ok_get_attr ok_get_attr(OP::OK_GET_ATTR, name, identifier, ans);
-				tuple_send(ok_get_attr, org);
+				const MERDY::ok_get_attr* ok_get_attr = z->allocate<MERDY::ok_get_attr>(OP::OK_GET_ATTR, name, identifier, ans);
+				tuple_send_async(ok_get_attr, org, z);
 				DEBUG(org.dump());
 				DEBUG_OUT("sending OK_GET_ATTR \n");
 			}else{
-				const MERDY::ng_get_attr ng_get_attr(OP::NG_GET_ATTR, name, identifier);
-				tuple_send(ng_get_attr, org);
+				const MERDY::ng_get_attr* ng_get_attr = z->allocate<MERDY::ng_get_attr>(OP::NG_GET_ATTR, name, identifier);
+				tuple_send_async(ng_get_attr, org, z);
 			}
 			break;
 		}
@@ -756,8 +773,8 @@ public:
 			it->second->toSend.merge(ans);
 			if(it->second->cnt == 0){
 				it->second->toSend.sort();
-				MERDY::ok_get_attr ok_get_attr(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
-				tuple_send(ok_get_attr, it->second->org);
+				MERDY::ok_get_attr* ok_get_attr = z->allocate<MERDY::ok_get_attr>(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
+				tuple_send_async(ok_get_attr, it->second->org, z);
 				DEBUG(it->second->org.dump());
 				delete it->second;
 				mer_get_fwds_r->erase(it);
@@ -778,8 +795,8 @@ public:
 			
 			it->second->cnt--;
 			if(it->second->cnt == 0){
-				MERDY::ok_get_attr ok_get_attr(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
-				tuple_send(ok_get_attr, it->second->org);
+				const MERDY::ok_get_attr* ok_get_attr = z->allocate<MERDY::ok_get_attr>(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
+				tuple_send_async(ok_get_attr, it->second->org, z);
 				delete it->second;
 				mer_get_fwds_r->erase(it);
 			}
@@ -793,11 +810,11 @@ public:
 			mp::sync< std::unordered_multimap<std::string, mercury_instance> >::ref mer_node_r(mer_node);
 			std::unordered_multimap<std::string, mercury_instance>::iterator it = mer_node_r->find(name);
 			if(it != mer_node_r->end()){
-				MERDY::ok_tellme_range ok_tellme_range(OP::OK_TELLME_RANGE, name, it->second.get_range());
-				tuple_send(ok_tellme_range, org);
+				const MERDY::ok_tellme_range* ok_tellme_range = z->allocate<MERDY::ok_tellme_range>(OP::OK_TELLME_RANGE, name, it->second.get_range());
+				tuple_send_async(ok_tellme_range, org, z);
 			}else{
-				MERDY::ng_tellme_range ng_tellme_range(OP::NG_TELLME_RANGE, name);
-				tuple_send(ng_tellme_range, org);
+				const MERDY::ng_tellme_range* ng_tellme_range = z->allocate<MERDY::ng_tellme_range>(OP::NG_TELLME_RANGE, name);
+				tuple_send_async(ng_tellme_range, org, z);
 			}
 			break;
 		}
@@ -837,8 +854,8 @@ public:
 			
 			//if(mer_node_r->find(name) != mer_node_r->end()){
 			mer_node_r->insert(std::pair<std::string, mercury_instance>(name, mercury_instance(range,hub)));
-			MERDY::ok_assign_range ok_assign_range(OP::OK_ASSIGN_RANGE, name);
-			tuple_send(ok_assign_range,org);
+			const MERDY::ok_assign_range* ok_assign_range = z->allocate<MERDY::ok_assign_range>(OP::OK_ASSIGN_RANGE, name);
+			tuple_send_async(ok_assign_range,org, z);
 			
 			DEBUG_OUT("assign_range done\n");
 			break;
@@ -858,23 +875,36 @@ public:
 		}
 		default:{
 			DEBUG_OUT("unrecognized\n");
+            assert(false);
 		}
 		}
 	}
 	void on_read(mp::wavy::event& e)
 	{
+        msgpack::object msg_clone;
 		try{
 			while(true) {
 				if(m_pac.execute()) {
 					msgpack::object msg = m_pac.data();
+                    msg_clone = msg;
 					mp::shared_ptr<msgpack::zone> z( m_pac.release_zone() );
 					m_pac.reset();
 
 					e.more();  //e.next();
+                    msgpack::sbuffer sb;
+                    msgpack::pack(sb, msg);
+                    sbuff_dump(sb);
+                    if(sb.size() < 23){
+                        fprintf(stderr,"invalid!! [");
+                        for(int i=0;i<256;i++){
+                            fprintf(stderr,"%02X",((char*)&msg)[i-sb.size()] & 0x0ff);
+                        }
+                        fprintf(stderr,"]\n");
+                    }
+
+					DEBUG(std::cerr << std::hex << std::showbase << "object received " << msg << "->");
 					
-					//DEBUG(std::cout << "object received: " << msg << "->");
-					
-					//DEBUG(lock_mut lock(&mut););
+					DEBUG(lock_mut lock(&mut););
 					event_handle(fd(), msg, z);
 					return;
 				}
@@ -891,7 +921,12 @@ public:
 			}
 		}
 		catch(msgpack::type_error& e) {
-			DEBUG_OUT("on_read: type error");
+            msgpack::sbuffer sb;
+            msgpack::pack(sb, msg_clone);
+
+            sbuff_dump(sb);
+            std::cerr << "throwed object[" << std::hex << std::showbase << msg_clone << "]" << std::endl;
+            assert(false);
 			throw;
 		} catch(std::exception& e) {
 			DEBUG_OUT("on_read: ");
@@ -945,7 +980,7 @@ int main(int argc, char** argv){
 	store(parse_command_line(argc,argv,opt), vm);
 	notify(vm);
 	if(vm.count("help")){
-		std::cout << opt << std::endl;
+		std::cerr << opt << std::endl;
 		return 0;
 	}
 	
@@ -1013,5 +1048,6 @@ int main(int argc, char** argv){
 	}
 	
 	// mpio start
+    while(1){lo.run_once();}
 	lo.run(4);
 } 

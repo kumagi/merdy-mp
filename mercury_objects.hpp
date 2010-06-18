@@ -1,3 +1,6 @@
+#ifndef MERCURY_OBJECTS_HPP__
+#define MERCURY_OBJECTS_HPP__
+
 #include "hash32.h"
 // mercury object
 
@@ -413,3 +416,6 @@ public:
 		return hash32(o.name) + hash32(o.identifier);
 	}
 };
+
+
+#endif // MERCURY_OBJECTS_HPP__

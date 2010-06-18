@@ -1,5 +1,9 @@
 
+#ifndef DYNAMO_OBJECTS_HPP__
+#define DYNAMO_OBJECTS_HPP__
+
 #include <msgpack.hpp>
+#include "mercury_objects.hpp"
 
 // wait fowarding list
 class fwd_wait{
@@ -37,13 +41,13 @@ enum dynamo_param{
 }
 
 class value_vclock{
-	std::unordered_map<std::string,attr> value;
+	std::unordered_map<std::string, attr> value;
 	unsigned int clock;
 public:
 	value_vclock():value(),clock(0){}
 	value_vclock(const std::unordered_map<std::string,attr>& _value, int _clock=1):value(_value),clock(_clock){}
 	value_vclock(const value_vclock& org):value(org.value),clock(org.clock){}
-	
+
 	int update(const std::unordered_map<std::string,attr>& _value, unsigned int _clock){
 		if(clock < _clock){
 			value = _value;
@@ -119,3 +123,6 @@ public:
 		fprintf(stderr," cnt:%d ",counter);
 	}
 };
+
+
+#endif // DYNAMO_OBJECTS_HPP__

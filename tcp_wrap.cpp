@@ -135,6 +135,7 @@ int connect_ip_port(const int socket,const int ip,const unsigned short port){
 		assert(!"connect failed");
 		return 1;
 	}
+    set_nonblock(socket);
 	return 0;
 }
 int get_myip(void){
