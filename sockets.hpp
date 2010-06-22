@@ -1,6 +1,9 @@
 #include "address.hpp"
+#include <mp/wavy.h>
 #include <mp/sync.h>
+#include <msgpack.h>
 #include <unordered_map>
+
 
 class socket_set{
 	mp::wavy::loop* lo;
@@ -75,3 +78,19 @@ public:
 	}
 		
 };
+
+template<typename tuple>
+inline void tuple_send(const tuple& t, const address& ad, socket_set* s){
+	msgpack::vrefbuffer vbuf;
+	msgpack::pack(vbuf, t);
+	const struct iovec* iov(vbuf.vector());
+	s->writev(ad, iov, vbuf.vector_size());
+}
+
+template<typename tuple>
+inline void tuple_send_async(const tuple* t, const address& ad, socket_set* s, mp::shared_ptr<msgpack::zone> z){
+	msgpack::vrefbuffer* vbuf = z->allocate<msgpack::vrefbuffer>();
+	msgpack::pack(*vbuf, *t);
+	const struct iovec* iov(vbuf->vector());
+	s->writev(ad, iov, vbuf->vector_size(),z);
+}

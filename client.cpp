@@ -36,7 +36,7 @@ public:
 	}
 };
 socket_set sockets;
-
+/*
 template<typename tuple>
 inline void tuple_send(const tuple& t, const address& ad){
 	msgpack::vrefbuffer vbuf;
@@ -44,6 +44,7 @@ inline void tuple_send(const tuple& t, const address& ad){
 	const struct iovec* iov(vbuf.vector());
 	sockets.writev(ad, iov, vbuf.vector_size());
 }
+*/
 
 namespace po = boost::program_options;
 int main(int argc, char** argv){
@@ -102,7 +103,7 @@ int main(int argc, char** argv){
 				if(sql.data()[0] == '#')continue;
 				if(sql == std::string("\n")) continue;
 				const msgpack::type::tuple<int,std::string> do_sql(OP::DO_SQL,sql);
-				tuple_send(do_sql,address(settings.targetip,settings.targetport));
+				tuple_send(do_sql,address(settings.targetip,settings.targetport),&sockets);
 				char buff[1024];
 				int readsize = read(fd, buff, 1024);
 				buff[readsize] = '\0';

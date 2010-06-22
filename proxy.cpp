@@ -65,20 +65,7 @@ address search_address(uint64_t key){
 	return hash_it->second;
 }
 socket_set sockets;
-template<typename tuple>
-inline void tuple_send(const tuple& t, const address& ad){
-	msgpack::vrefbuffer vbuf;
-	msgpack::pack(vbuf, t);
-	const struct iovec* iov(vbuf.vector());
-	sockets.writev(ad, iov, vbuf.vector_size());
-}
-template<typename tuple>
-inline void tuple_send_async(const tuple* t, const address& ad, mp::shared_ptr<msgpack::zone> z){
-	msgpack::vrefbuffer vbuf;
-	msgpack::pack(vbuf, *t);
-	const struct iovec* iov(vbuf.vector());
-	sockets.writev(ad, iov, vbuf.vector_size(),z);
-}
+
 
 mp::sync< std::unordered_multimap<uint64_t, address> > set_fwd; // set, fd
 mp::sync< std::unordered_multimap<uint64_t, address> > coordinate_fwd; // coordinate
@@ -105,7 +92,7 @@ bool mercury_send(const std::string& name, const attr& target, const tuple& t){
 		std::map<attr_range,address>::iterator range_it = hub_it->second.begin();
 		while(range_it != hub_it->second.end()){
 			if(range_it->first.contain(target)){
-				tuple_send(t,range_it->second);
+				tuple_send(t,range_it->second, &sockets);
 				return true;
 			}
 			++range_it;
@@ -372,7 +359,7 @@ public:
 				mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
 				const MERDY::get_dy* get_dy = z->allocate<MERDY::get_dy>(OP::GET_DY,tuple_it->get_hash(),address(settings.myip,settings.myport));
 				const address& target = search_address(tuple_it->get_hash()); 
-				tuple_send_async(get_dy,target,z);
+				tuple_send_async(get_dy,target,&sockets,z);
 				++tuple_it;
 			}
 		}
@@ -551,6 +538,7 @@ public:
 					}else if(sql.get() == sqlparser::sql::data_int){
 						type = attr::number;
 					}else{
+                        type = 0;
 						assert(!"invalid data");
 					}
 					sql.next();
@@ -559,7 +547,7 @@ public:
 						sql_create_table_r->insert(std::pair<std::string,std::shared_ptr<sql_answer> >(attrname, ans));
 					}
 					const MERDY::create_schema* const  create_schema = z->allocate<MERDY::create_schema>((int)OP::CREATE_SCHEMA,attrname,type,address(settings.myip,settings.myport));
-					tuple_send_async(create_schema,address(settings.masterip,settings.masterport),z);
+					tuple_send_async(create_schema,address(settings.masterip,settings.masterport),&sockets,z);
 					DEBUG_OUT("%s create.\n",attrname.c_str());
 					if(sql.get() == sqlparser::sql::comma){
 						sql.next();
@@ -589,7 +577,7 @@ public:
 				assert(sql.get() == sqlparser::sql::left_brac);sql.next();
 				// get attrs
 				std::list<attr> attr_values;
-				uint64_t hashed_tuple;
+				uint64_t hashed_tuple = 0;
 				while(!(sql.get() == sqlparser::sql::right_brac)){
 					assert(sql.get().is_string());
 					if(sql.get().is_number()){
@@ -628,9 +616,9 @@ public:
 					dynamo_tuple.insert(std::pair<std::string,attr>(*names_it,*values_it));
 					++names_it;++values_it;
 				}
-				const MERDY::set_dy set_dy(OP::SET_DY, hashed_tuple, dynamo_tuple,address(settings.myip,settings.myport));
+				const MERDY::set_dy* set_dy = z->allocate<MERDY::set_dy>(OP::SET_DY, hashed_tuple, dynamo_tuple,address(settings.myip,settings.myport));
 				const address& dy_target = search_address(hashed_tuple);
-				tuple_send(set_dy, dy_target);
+				tuple_send_async(set_dy, dy_target, &sockets, z);
 				DEBUG_OUT("set dy for ");
 				DEBUG(search_address(hashed_tuple).dump());
 				DEBUG_OUT("\n");
@@ -657,8 +645,8 @@ public:
 						while(hub_it != target_hub.end()){
 							if(hub_it->first.contain(*values_it)){
 								const int mercury_query_identifier = __sync_fetch_and_add(&settings.mercury_cnt,1);
-								const MERDY::set_attr set_attr(OP::SET_ATTR, *names_it, mercury_query_identifier ,mercury_kvp(*values_it,hashed_tuple), address(settings.myip,settings.myport));
-								tuple_send(set_attr, hub_it->second);
+								const MERDY::set_attr* set_attr = z->allocate<MERDY::set_attr>(OP::SET_ATTR, *names_it, mercury_query_identifier ,mercury_kvp(*values_it,hashed_tuple), address(settings.myip,settings.myport));
+								tuple_send_async(set_attr, hub_it->second, &sockets, z);
 								break;
 							}
 							++hub_it;
@@ -671,8 +659,8 @@ public:
 							suspended_insert_mercury_r->insert(std::pair<std::string,std::shared_ptr<sql_insert_workingset> >(*names_it,sets_p));
 						}
 						
-						const MERDY::tellme_assign tellme_assign(OP::TELLME_ASSIGN, *names_it, address(settings.myip,settings.myport));
-						tuple_send(tellme_assign, address(settings.masterip,settings.masterport));
+						const MERDY::tellme_assign* tellme_assign = z->allocate<MERDY::tellme_assign>(OP::TELLME_ASSIGN, *names_it, address(settings.myip,settings.myport));
+						tuple_send_async(tellme_assign, address(settings.masterip,settings.masterport),&sockets, z);
 					}
 					++names_it; ++values_it;
 				}
@@ -901,8 +889,8 @@ public:
 			
 			if(it != send_fwd_r->end()){
 				// read repair
-				const MERDY::put_dy put_dy((int)OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
-				tuple_send(put_dy, org);
+				const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
+				tuple_send_async(put_dy, org, &sockets, z);
 			}
 			break;
 		}
@@ -1152,9 +1140,9 @@ int main(int argc, char** argv){
 	// hello master.
 	{
 		const MERDY::add_me_proxy add_me_proxy(OP::ADD_ME_PROXY,address(settings.myip,settings.myport));
-		tuple_send(add_me_proxy,address(settings.masterip,settings.masterport));
+		tuple_send(add_me_proxy,address(settings.masterip,settings.masterport),&sockets);
 		const MERDY::tellme_hashes tellme_hashes(OP::TELLME_HASHES,address(settings.myip,settings.myport));
-		tuple_send(tellme_hashes,address(settings.masterip,settings.masterport));
+		tuple_send(tellme_hashes,address(settings.masterip,settings.masterport),&sockets);
 	}
 	
 	// mpio start

@@ -19,7 +19,6 @@
 
 
 
-
 #include <boost/program_options.hpp>
 #include <unordered_map>
 
@@ -61,15 +60,6 @@ void dump_hashes(){
 		it++;
 	}
 }
-/*
-template<typename tuple>
-inline void tuple_send(const tuple& t, const address& ad){
-	msgpack::vrefbuffer vbuf;
-	msgpack::pack(vbuf, t);
-	const struct iovec* iov(vbuf.vector());
-	sockets.writev(ad, iov, vbuf.vector_size());
-}
-*/
 
 pthread_mutex_t mut;
 class lock_mut{
@@ -95,14 +85,6 @@ void sbuff_dump(const msgpack::sbuffer& sb){
     fprintf(stderr,"]\n");
 }
 
-
-template<typename tuple>
-inline void tuple_send_async(const tuple* t, const address& ad, mp::shared_ptr<msgpack::zone> z){
-	msgpack::vrefbuffer vbuf;
-	msgpack::pack(vbuf, *t);
-	const struct iovec* iov(vbuf.vector());
-	sockets.writev(ad, iov, vbuf.vector_size(),z);
-}
 
 
 class main_handler : public mp::wavy::handler {
@@ -169,9 +151,9 @@ public:
 			}
 			
 			const MERDY::set_coordinate* set_coordinate = z->allocate<MERDY::set_coordinate>(OP::SET_COORDINATE, key, value, address(settings.myip,settings.myport));
-			//tuple_send_async(set_coordinate,coordinator,z);
+			tuple_send_async(set_coordinate,coordinator,&sockets,z);
             DEBUG_OUT("send to ");
-            coordinator.dump();
+            DEBUG(coordinator.dump());
 			
 			DEBUG_OUT(" done\n");
 			break;
@@ -190,7 +172,7 @@ public:
 			}
 			{
 				const MERDY::ok_set_dy* ok_set_dy = z->allocate<MERDY::ok_set_dy>(OP::OK_SET_DY,key);
-				tuple_send_async(ok_set_dy,it->second,z);
+				tuple_send_async(ok_set_dy,it->second,&sockets,z);
 				set_fwd_r->erase(it);
 			}
 			DEBUG_OUT(" done\n");
@@ -234,7 +216,7 @@ public:
 				const address& target = it->second;
 				if(already_send.find(target) == already_send.end()){
 					const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, vcvalue, address(settings.myip,settings.myport));
-					tuple_send_async(put_dy, target, z);
+					tuple_send_async(put_dy, target, &sockets, z);
 					DEBUG_OUT("%llu ->",(unsigned long long)key);
 					DEBUG(vcvalue.dump());
 					DEBUG(target.dump());
@@ -280,7 +262,7 @@ public:
 			}
 			
 			const MERDY::ok_put_dy* ok_put_dy = z->allocate<MERDY::ok_put_dy>(OP::OK_PUT_DY, key);
-			tuple_send_async(ok_put_dy,ad, z);
+			tuple_send_async(ok_put_dy,ad, &sockets, z);
 			DEBUG_OUT(" done\n");
 			break;
 		}
@@ -299,7 +281,7 @@ public:
 				// write ok
 				DEBUG_OUT("write ok:[%llu] ",(unsigned long long)key);
 				const MERDY::ok_set_dy* ok_set_dy = z->allocate<MERDY::ok_set_dy>(OP::OK_SET_DY, key);
-				tuple_send_async(ok_set_dy,it->second.second,z);
+				tuple_send_async(ok_set_dy,it->second.second, &sockets,z);
 			}else if(it->second.first == DY::NUM){
 				put_fwd_r->erase(it);
 				DEBUG_OUT("complate to saving %lu", key);
@@ -330,7 +312,7 @@ public:
 			for(int i=DY::NUM; i>0; --i){
 				if(sentlist.find(it->second) == sentlist.end()){
 					const MERDY::send_dy* send_dy = z->allocate<MERDY::send_dy>(OP::SEND_DY, key, address(settings.myip,settings.myport));
-					tuple_send_async(send_dy, it->second,z);
+					tuple_send_async(send_dy, it->second, &sockets,z);
 					sentlist.insert(it->second);
 				}else{++i;}
 				++it;
@@ -366,10 +348,10 @@ public:
 				= key_value_r->find(key);
 			if(ans == key_value_r->end()){
 				const MERDY::notfound_dy* notfound_dy = z->allocate<MERDY::notfound_dy>((int)OP::NOTFOUND_DY, key, address(settings.myip,settings.myport));
-				tuple_send_async(notfound_dy, org,z);
+				tuple_send_async(notfound_dy, org, &sockets,z);
 			}else{
 				const MERDY::found_dy* found_dy = z->allocate<MERDY::found_dy>((int)OP::FOUND_DY, key, ans->second, address(settings.myip,settings.myport));
-				tuple_send_async(found_dy, org,z);
+				tuple_send_async(found_dy, org, &sockets,z);
 				DEBUG_OUT("found ");
 				DEBUG(ans->second.dump());
 				DEBUG_OUT("\n");
@@ -396,7 +378,7 @@ public:
 			int result = it->second.update(value);
 			if(result == -1){ // old data found -> read repair
 				const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
-				tuple_send_async(put_dy, org,z);
+				tuple_send_async(put_dy, org, &sockets,z);
 			}
 			if(it->second.count_eq(DY::READ)){
 				DEBUG_OUT("counter:%d ",it->second.get_cnt());
@@ -409,7 +391,7 @@ public:
 					key_value_r->insert(std::pair<uint64_t, value_vclock>(it->first,it->second.get_value()));
 				}
 				const MERDY::found_dy* found_dy = z->allocate<MERDY::found_dy>(OP::FOUND_DY,key,it->second.get_vcvalue(),address(settings.myip,settings.myport));
-				tuple_send_async(found_dy, it->second.org, z);
+				tuple_send_async(found_dy, it->second.org, &sockets, z);
 				DEBUG(it->second.dump());
 				send_fwd_r->erase(it);
 				DEBUG_OUT("answered ok\n");
@@ -433,7 +415,7 @@ public:
 			if(it != send_fwd_r->end()){
 				// read repair
 				const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
-				tuple_send_async(put_dy, org, z);
+				tuple_send_async(put_dy, org, &sockets, z);
 			}
 			break;
 		}
@@ -489,7 +471,7 @@ public:
 					DEBUG_OUT("\n");
 					
 					const MERDY::ok_set_attr* ok_set_attr = z->allocate<MERDY::ok_set_attr>(OP::OK_SET_ATTR, name, identifier);
-					tuple_send_async(ok_set_attr, org, z);
+					tuple_send_async(ok_set_attr, org, &sockets, z);
 					break;
 				}
 				++it_mi;
@@ -512,7 +494,7 @@ public:
 				assert(target->second != address(settings.myip,settings.myport) && target != it_mi->second.get_hubs().end());
 				
 				const MERDY::set_attr* pass_set_attr = z->allocate<MERDY::set_attr>(OP::SET_ATTR,name,identifier,kvp,address(settings.myip,settings.myport));
-				tuple_send_async(pass_set_attr,target->second, z);
+				tuple_send_async(pass_set_attr,target->second, &sockets, z);
 			}
 			DEBUG_OUT("done\n");
 			break;
@@ -530,7 +512,7 @@ public:
 			it->second.cnt--;
 			if(it->second.cnt == 0){
 				const MERDY::ok_set_attr* ok_set_attr = z->allocate<MERDY::ok_set_attr>(OP::OK_SET_ATTR, name, identifier);
-				tuple_send_async(ok_set_attr, it->second.org, z);
+				tuple_send_async(ok_set_attr, it->second.org, &sockets, z);
 				mer_set_fwds_r->erase(it);
 			}
 			break;
@@ -604,7 +586,7 @@ public:
 				while(it != fwd.end()){
 					const MERDY::get_range* get_range
 						= z->allocate<MERDY::get_range>(OP::GET_RANGE,name,identifier,it->second,address(settings.myip,settings.myport)); 
-					tuple_send_async(get_range,it->first,z);
+					tuple_send_async(get_range,it->first, &sockets,z);
 					++it;
 				}
 				newfwd->cnt--;
@@ -612,7 +594,7 @@ public:
 					mp::sync< std::unordered_multimap<mer_fwd_id,mer_get_fwd*,mer_fwd_id_hash> >::ref mer_range_fwd_r(mer_range_fwd);
 					const MERDY::ok_get_range* const ok_get_range
 						= z->allocate<MERDY::ok_get_range>(OP::OK_GET_RANGE, name, identifier, newfwd->toSend);
-					tuple_send_async(ok_get_range, newfwd->org,z);
+					tuple_send_async(ok_get_range, newfwd->org, &sockets,z);
 					mer_range_fwd_r->erase(mer_fwd_id(name,identifier));
 					delete newfwd;
 				}
@@ -621,7 +603,7 @@ public:
 				answer.sort();
 				const MERDY::ok_get_range* const ok_get_range 
 					= z->allocate<MERDY::ok_get_range>(OP::OK_GET_RANGE, name, identifier, answer);
-				tuple_send_async(ok_get_range, org,z);
+				tuple_send_async(ok_get_range, org, &sockets,z);
 				DEBUG(org.dump());
 				DEBUG_OUT("not fowarded\n");
 			}
@@ -643,7 +625,7 @@ public:
 			if(it->second->cnt == 0){
 				it->second->toSend.sort();
 				const MERDY::ok_get_range* const ok_get_range = z->allocate<MERDY::ok_get_range>(OP::OK_GET_RANGE, name, identifier, it->second->toSend);
-				tuple_send_async(ok_get_range, it->second->org,z);
+				tuple_send_async(ok_get_range, it->second->org, &sockets,z);
 				delete it->second;
 				mer_range_fwd_r->erase(it);
 				DEBUG_OUT("ok fowarding.\n");
@@ -734,18 +716,18 @@ public:
 				std::list<std::pair<address,std::list<attr> > >::iterator fwd_it = foward_list.begin(); 
 				while(fwd_it != foward_list.end()){
 					const MERDY::get_attr* get_attr = z->allocate<MERDY::get_attr>(OP::GET_ATTR, name, identifier, fwd_it->second, address(settings.myip,settings.myport));
-					tuple_send_async(get_attr, fwd_it->first, z);
+					tuple_send_async(get_attr, fwd_it->first, &sockets, z);
 					++fwd_it;
 				}
 				fowarding->cnt--;
 			}else if(!ans.empty()){
 				const MERDY::ok_get_attr* ok_get_attr = z->allocate<MERDY::ok_get_attr>(OP::OK_GET_ATTR, name, identifier, ans);
-				tuple_send_async(ok_get_attr, org, z);
+				tuple_send_async(ok_get_attr, org, &sockets, z);
 				DEBUG(org.dump());
 				DEBUG_OUT("sending OK_GET_ATTR \n");
 			}else{
 				const MERDY::ng_get_attr* ng_get_attr = z->allocate<MERDY::ng_get_attr>(OP::NG_GET_ATTR, name, identifier);
-				tuple_send_async(ng_get_attr, org, z);
+				tuple_send_async(ng_get_attr, org, &sockets, z);
 			}
 			break;
 		}
@@ -774,7 +756,7 @@ public:
 			if(it->second->cnt == 0){
 				it->second->toSend.sort();
 				MERDY::ok_get_attr* ok_get_attr = z->allocate<MERDY::ok_get_attr>(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
-				tuple_send_async(ok_get_attr, it->second->org, z);
+				tuple_send_async(ok_get_attr, it->second->org, &sockets, z);
 				DEBUG(it->second->org.dump());
 				delete it->second;
 				mer_get_fwds_r->erase(it);
@@ -796,7 +778,7 @@ public:
 			it->second->cnt--;
 			if(it->second->cnt == 0){
 				const MERDY::ok_get_attr* ok_get_attr = z->allocate<MERDY::ok_get_attr>(OP::OK_GET_ATTR,name,identifier,it->second->toSend);
-				tuple_send_async(ok_get_attr, it->second->org, z);
+				tuple_send_async(ok_get_attr, it->second->org, &sockets, z);
 				delete it->second;
 				mer_get_fwds_r->erase(it);
 			}
@@ -811,10 +793,10 @@ public:
 			std::unordered_multimap<std::string, mercury_instance>::iterator it = mer_node_r->find(name);
 			if(it != mer_node_r->end()){
 				const MERDY::ok_tellme_range* ok_tellme_range = z->allocate<MERDY::ok_tellme_range>(OP::OK_TELLME_RANGE, name, it->second.get_range());
-				tuple_send_async(ok_tellme_range, org, z);
+				tuple_send_async(ok_tellme_range, org, &sockets, z);
 			}else{
 				const MERDY::ng_tellme_range* ng_tellme_range = z->allocate<MERDY::ng_tellme_range>(OP::NG_TELLME_RANGE, name);
-				tuple_send_async(ng_tellme_range, org, z);
+				tuple_send_async(ng_tellme_range, org, &sockets, z);
 			}
 			break;
 		}
@@ -855,7 +837,7 @@ public:
 			//if(mer_node_r->find(name) != mer_node_r->end()){
 			mer_node_r->insert(std::pair<std::string, mercury_instance>(name, mercury_instance(range,hub)));
 			const MERDY::ok_assign_range* ok_assign_range = z->allocate<MERDY::ok_assign_range>(OP::OK_ASSIGN_RANGE, name);
-			tuple_send_async(ok_assign_range,org, z);
+			tuple_send_async(ok_assign_range,org, &sockets, z);
 			
 			DEBUG_OUT("assign_range done\n");
 			break;
@@ -881,26 +863,14 @@ public:
 	}
 	void on_read(mp::wavy::event& e)
 	{
-        msgpack::object msg_clone;
 		try{
 			while(true) {
 				if(m_pac.execute()) {
 					msgpack::object msg = m_pac.data();
-                    msg_clone = msg;
 					mp::shared_ptr<msgpack::zone> z( m_pac.release_zone() );
 					m_pac.reset();
 
 					e.more();  //e.next();
-                    msgpack::sbuffer sb;
-                    msgpack::pack(sb, msg);
-                    sbuff_dump(sb);
-                    if(sb.size() < 23){
-                        fprintf(stderr,"invalid!! [");
-                        for(int i=0;i<256;i++){
-                            fprintf(stderr,"%02X",((char*)&msg)[i-sb.size()] & 0x0ff);
-                        }
-                        fprintf(stderr,"]\n");
-                    }
 
 					DEBUG(std::cerr << std::hex << std::showbase << "object received " << msg << "->");
 					
@@ -921,12 +891,7 @@ public:
 			}
 		}
 		catch(msgpack::type_error& e) {
-            msgpack::sbuffer sb;
-            msgpack::pack(sb, msg_clone);
-
-            sbuff_dump(sb);
-            std::cerr << "throwed object[" << std::hex << std::showbase << msg_clone << "]" << std::endl;
-            assert(false);
+            ::shutdown(fd(),SHUT_RDWR);
 			throw;
 		} catch(std::exception& e) {
 			DEBUG_OUT("on_read: ");
@@ -1048,6 +1013,5 @@ int main(int argc, char** argv){
 	}
 	
 	// mpio start
-    while(1){lo.run_once();}
 	lo.run(4);
 } 

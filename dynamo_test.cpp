@@ -18,7 +18,7 @@
 #include "dynamo_objects.hpp"
 #include "unordered_map.hpp"
 
-#define MES_MAX 1024*1024
+#define MES_MAX 1024*16
 
 
 #include <boost/program_options.hpp>
@@ -113,13 +113,13 @@ public:
 		case OP::NO_ASSIGNMENT:{
 			DEBUG_OUT("NO_ASSIGNMENT:");
 			const MERDY::no_assignment no_assignment(obj);
-			const std::string& name = no_assignment.get<1>();
+			//const std::string& name = no_assignment.get<1>();
 			DEBUG_OUT("for %s\n",name.c_str());
 			break;
 		}
 		case OP::OK_SET_DY:{// op, key, address
-			const MERDY::ok_set_dy& ok_set_dy(obj);
-			const uint64_t& key = ok_set_dy.get<1>();
+			//const MERDY::ok_set_dy& ok_set_dy(obj);
+			//const uint64_t& key = ok_set_dy.get<1>();
 
 			static int num = MES_MAX;
 			DEBUG_OUT("OK_SET_DY:%lu\n ",key);
@@ -135,9 +135,9 @@ public:
 			static int found = MES_MAX;
 			DEBUG_OUT("FOUND_DY:");
 			const MERDY::found_dy found_dy(obj);
-			const uint64_t& key = found_dy.get<1>();
-			const value_vclock& value = found_dy.get<2>();
-			const address& org = found_dy.get<3>();
+			//const uint64_t& key = found_dy.get<1>();
+			//const value_vclock& value = found_dy.get<2>();
+			//const address& org = found_dy.get<3>();
             
 			lock_mut lock(&mut);
 			found--;
@@ -263,10 +263,10 @@ address search_address(uint64_t key){
 
 template<typename tuple>
 inline void tuple_send_async(const tuple* const t, const address& ad, mp::shared_ptr<msgpack::zone>& z){
-	msgpack::vrefbuffer vbuf;
-	msgpack::pack(vbuf, *t);
-	const struct iovec* iov(vbuf.vector());
-	sockets.writev(ad, iov, vbuf.vector_size(),z);
+	msgpack::vrefbuffer* vbuf = z->allocate<msgpack::vrefbuffer>();
+	msgpack::pack(*vbuf, *t);
+	const struct iovec* iov(vbuf->vector());
+	sockets.writev(ad, iov, vbuf->vector_size(),z);
 }
 
 template<typename tuple>
@@ -302,28 +302,24 @@ void* testbench(void*){
         t.restart();
 
         {
-            mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
             DEBUG_OUT("start SET_DY 1000 times\n");
             for(int i=0;i<MES_MAX;i++){
-                uint64_t key = i;//hash64(i);
+                mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
+                uint64_t key = hash64(i);
                 address target = search_address(key);
                 const MERDY::set_dy* const set_dy = z->allocate<MERDY::set_dy>(OP::SET_DY, key, dy_tuple, address(settings.myip,settings.myport));
-                tuple_dump(*set_dy);
                 tuple_send_async(set_dy, target, z);
-
-                //const MERDY::set_dy set_dy(OP::SET_DY, 0xba, dy_tuple, address(settings.myip,settings.myport));
-                //tuple_send(set_dy,target);
             }
         }
         while(!set_flag){usleep(1);};
         fprintf(stderr,"set time : %lf\n",t.elapsed());
 	}
 	{
-        mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
         t.restart();
 		mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
 		std::map<uint64_t,address>::iterator dy_target = dy_hash_r->begin();
-		for(int i=0;i<MES_MAX;i++){
+		for(int i=0;i<MES_MAX * MES_MAX;i++){
+            mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
 			char buff[256];
 			sprintf(buff,"k%d",i);
 			uint64_t key = hash64(i);
@@ -404,6 +400,5 @@ int main(int argc, char** argv){
 	pthread_create(&test,NULL,testbench,NULL);
 	pthread_detach(test);
 	
-    while(1){lo.run_once();}
 	lo.run(4);
 }
