@@ -17,6 +17,10 @@
 #include "mercury_objects.hpp"
 #include "dynamo_objects.hpp"
 
+#include <tcutil.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 
 #include <boost/program_options.hpp>

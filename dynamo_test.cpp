@@ -17,8 +17,8 @@
 #include "mercury_objects.hpp"
 #include "dynamo_objects.hpp"
 #include "unordered_map.hpp"
+#include "gettime.h"
 
-#define MES_MAX 1024*16
 
 
 #include <boost/program_options.hpp>
@@ -32,6 +32,7 @@ static struct settings{
 	int verbose;
 	unsigned short myport,targetport;
 	int myip,targetip;
+    int max_item;
 	settings():verbose(10),myport(11411),targetport(11011),myip(get_myip()),targetip(aton("127.0.0.1")){}
 }settings;
 
@@ -113,15 +114,15 @@ public:
 		case OP::NO_ASSIGNMENT:{
 			DEBUG_OUT("NO_ASSIGNMENT:");
 			const MERDY::no_assignment no_assignment(obj);
-			//const std::string& name = no_assignment.get<1>();
+			const std::string& name = no_assignment.get<1>();
 			DEBUG_OUT("for %s\n",name.c_str());
 			break;
 		}
 		case OP::OK_SET_DY:{// op, key, address
-			//const MERDY::ok_set_dy& ok_set_dy(obj);
-			//const uint64_t& key = ok_set_dy.get<1>();
+			const MERDY::ok_set_dy& ok_set_dy(obj);
+			const uint64_t& key = ok_set_dy.get<1>();
 
-			static int num = MES_MAX;
+			static int num = settings.max_item;
 			DEBUG_OUT("OK_SET_DY:%lu\n ",key);
 			// responce for fowarding
 			lock_mut lock(&mut);
@@ -132,7 +133,7 @@ public:
 			break;
 		}
 		case OP::FOUND_DY:{ // op, key, vcvalue, address
-			static int found = MES_MAX;
+			static int found = settings.max_item;
 			DEBUG_OUT("FOUND_DY:");
 			const MERDY::found_dy found_dy(obj);
 			//const uint64_t& key = found_dy.get<1>();
@@ -287,9 +288,20 @@ inline void tuple_dump(const tuple& t){
     
     assert(sb.size() > 22);
 }
+class timer{
+    double time;
+public:
+    timer():time(gettime()){}
+    void restart(){
+        time = gettime();
+    }
+    double elapsed(){
+        return gettime() - time;
+    }
+};
 
 void* testbench(void*){
-    boost::timer t;
+    timer t;
 	{// set_dy:{ // op, attr_name, list<mercury_kvp>, address
 		MERDY::tellme_hashes tellme_hashes(OP::TELLME_HASHES, address(settings.myip,settings.myport));
 		tuple_send(tellme_hashes,address(settings.targetip,settings.targetport));
@@ -303,7 +315,7 @@ void* testbench(void*){
 
         {
             DEBUG_OUT("start SET_DY 1000 times\n");
-            for(int i=0;i<MES_MAX;i++){
+            for(int i=0;i<settings.max_item;i++){
                 mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
                 uint64_t key = hash64(i);
                 address target = search_address(key);
@@ -318,7 +330,7 @@ void* testbench(void*){
         t.restart();
 		mp::sync< std::map<uint64_t,address> >::ref dy_hash_r(dy_hash);
 		std::map<uint64_t,address>::iterator dy_target = dy_hash_r->begin();
-		for(int i=0;i<MES_MAX * MES_MAX;i++){
+		for(int i=0;i<settings.max_item;i++){
             mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
 			char buff[256];
 			sprintf(buff,"k%d",i);
@@ -350,11 +362,12 @@ int main(int argc, char** argv){
 		("help,h", "view help")
 		("verbose,v", "verbose mode")
 		("address,a",po::value<std::string>(&target)->default_value("127.0.0.1"), "target address")
-		("tport,P",po::value<unsigned short>(&settings.targetport)->default_value(11011), "target port");
-	
+		("tport,P",po::value<unsigned short>(&settings.targetport)->default_value(11011), "target port")
+        ("quantity,n",po::value<int>(&settings.max_item)->default_value(10000), "test quantity");
+
 
 	po::variables_map vm;
-	store(parse_command_line(argc,argv,opt), vm);
+    store(parse_command_line(argc,argv,opt), vm);
 	notify(vm);
 	if(vm.count("help")){
 		std::cout << opt << std::endl;
@@ -368,8 +381,8 @@ int main(int argc, char** argv){
 	settings.targetip = aton(target.c_str());
 
 	// view options
-	printf("verbose:%d\naddress:[%s]\n",
-		   settings.verbose,ntoa(settings.myip));
+	printf("test for %d\naddress:[%s]\n",
+		   settings.max_item,ntoa(settings.myip));
 	printf("target:[%s:%d]\n"
 		   ,ntoa(settings.targetip),settings.targetport);
 	
