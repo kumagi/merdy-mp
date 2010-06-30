@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <boost/shared_ptr.hpp>
+#include <boost/noncopyable.hpp>
 
 namespace tokyo_cabinet{
 
@@ -298,24 +299,92 @@ public:
 
 
 template <class key, class value>
-class mhash{
+class multimap{
     TCMDB* m;
-
-
-
-
-
-
+    pthread_mutex_t delete_mutex;
+public:
+    class iterator{
+    public:
+        mutable std::pair<const key,value> kvp;
+        iterator(std::pair<const key,value> _kvp)
+            :kvp(_kvp){}
+        iterator(const iterator& o)
+            :kvp(o.kvp){}
+        iterator()
+            :kvp(*static_cast<key*>(NULL),*static_cast<value*>(NULL)){}
+        std::pair<const key,value>* operator->(){
+            return &kvp;
+        }
+        std::pair<const key,value>& operator*(){
+            return kvp;
+        }
+        bool operator==(const iterator& rhs)const{
+            if(is_null() && rhs.is_null())return true;
+            else if(kvp.first == rhs.kvp.first)return true;
+            else return false;
+        }
+        bool operator!=(const iterator& rhs)const{
+            return !(operator==(rhs));
+        }
+        iterator& operator=(const iterator& rhs){
+            kvp = rhs.kvp;
+            return *this;
+        }
+    private:
+        bool is_null()const{
+            return &kvp.first == &kvp.second;
+        }
+        iterator& operator++()const;
+        iterator& operator--()const;
+    };
+    class scoped_lock: public boost::noncopyable{
+        pthread_mutex_t* l;
+    public:
+        scoped_lock(pthread_mutex_t* _l):l(_l){
+            pthread_mutex_lock(l);
+        }
+        ~scoped_lock(){
+            pthread_mutex_unlock(l);
+        }
+    };
+    multimap():m(tcmdbnew2(64)){
+        pthread_mutex_init(&delete_mutex, 0);
+    }
+    void insert(const std::pair<const key,value>& kvp){
+        tcmdbputcat(m,&kvp.first,sizeof(key),&kvp.second,sizeof(value));
+    }
+    iterator find(const key& k){
+        int length;
+        value* result = static_cast<value*>(tcmdbget(m, &k, sizeof(k), &length));
+        if(result != NULL){
+            return iterator(std::pair<const key,value>(k,*result));
+        }else{
+            return end();
+        }
+    }
+    bool erase(const key& k){
+        int length;
+        scoped_lock lock(&delete_mutex);
+        value* result = static_cast<value*>(tcmdbget(m, &k, sizeof(k), &length));
+        if(!result){return false;}
+        if(length == sizeof(value)){
+            tcmdbout(m, &k, sizeof(k));
+            return true;
+        }
+        assert(length > sizeof(value));
+        char* newhead = reinterpret_cast<char*>(result) + sizeof(value);
+        tcmdbput(m, &k, sizeof(k), newhead, length - sizeof(value));
+        return true;
+    }
+    iterator end()const{
+        static const iterator it = iterator();
+        return it;
+    }
+    uint64_t size()const{
+        return tcmdbrnum(m);
+    }
+    ~multimap(){tcmdbdel(m);}
 };
-
-
-
-
-
-
-
-
-
 
 } // namespace tokyo_cabinet
 #endif
