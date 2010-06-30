@@ -1,9 +1,16 @@
 #include <stdlib.h>
-#include <mp/wavy.h>
-#include <mp/sync.h>
+#include <tcutil.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <limits.h>
+
 #include <unordered_map>
 #include <unordered_set>
+
+#include <mp/wavy.h>
+#include <mp/sync.h>
 #include <msgpack.hpp>
+
 #include "unordered_map.hpp"
 #include "hash64.h"
 #include "hash32.h"
@@ -11,20 +18,15 @@
 #include "tcp_wrap.h"
 #include "address.hpp"
 #include "sockets.hpp"
-#include <limits.h>
 #include "debug_mode.h"
 #include "merdy_operations.h"
 #include "mercury_objects.hpp"
 #include "dynamo_objects.hpp"
 
-#include <tcutil.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdint.h>
-
 
 #include <boost/program_options.hpp>
 #include <unordered_map>
+#include "tcpp.hpp"
 
 static const char interrupt[] = {-1,-12,-1,-3,6};
 
@@ -46,6 +48,9 @@ socket_set sockets;
 mp::sync< std::unordered_multimap<uint64_t, address> > set_fwd; // set, fd
 mp::sync< std::unordered_multimap<uint64_t, address> > coordinate_fwd; // coordinate flag
 mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > > put_fwd; // counter and origin address
+
+
+tokyo_cabinet::map<uint64_t, get_fwd_t> tc_send_fwd;
 mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > > send_fwd; // counter and value with origin address
 mp::sync< std::unordered_multimap<uint64_t, value_vclock> > key_value;
 
@@ -308,8 +313,11 @@ public:
 				it = dy_hash.begin();
 			}
 			{
+                /*
 				mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
 				send_fwd_r->insert(std::pair<uint64_t, get_fwd_t>(key, get_fwd_t(value_vclock(),org)));
+                */
+                tc_send_fwd.insert(key,get_fwd_t(value_vclock(),org));
 			}
 			int tablerest = dy_hash.size();
 			std::unordered_set<address, address_hash> sentlist;
@@ -369,14 +377,12 @@ public:
 			const value_vclock& value = found_dy.get<2>();
 			const address& org = found_dy.get<3>();
 			
-			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
-			std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
-			if(it == send_fwd_r->end()){
+			//mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
+			//std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
+            tokyo_cabinet::map<uint64_t, get_fwd_t>::iterator it = tc_send_fwd.find(key);
+			if(it == tc_send_fwd.end()){
 				DEBUG_OUT("%llu already answered\n", (unsigned long long)key);
 				
-				for(std::unordered_multimap<uint64_t, get_fwd_t>::iterator it=send_fwd_r->begin();it != send_fwd_r->end(); ++it){
-					DEBUG_OUT("key[%llu],",(unsigned long long)it->first);
-				}
 				break;
 			}
 			int result = it->second.update(value);
@@ -397,7 +403,7 @@ public:
 				const MERDY::found_dy* found_dy = z->allocate<MERDY::found_dy>(OP::FOUND_DY,key,it->second.get_vcvalue(),address(settings.myip,settings.myport));
 				tuple_send_async(found_dy, it->second.org, &sockets, z);
 				DEBUG(it->second.dump());
-				send_fwd_r->erase(it);
+				tc_send_fwd.erase(it);
 				DEBUG_OUT("answered ok\n");
 			}else{
 				DEBUG_OUT("updated ");
