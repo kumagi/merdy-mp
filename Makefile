@@ -1,4 +1,4 @@
-CC=g++
+CC=g++44
 OPTS=-O4 -fexceptions -std=c++0x -march=x86-64 -g
 LD=-lmpio -lmsgpack -pthread -lboost_program_options  -ltokyocabinet
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \

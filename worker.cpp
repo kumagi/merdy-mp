@@ -418,11 +418,13 @@ public:
 			const uint64_t& key = notfound_dy.get<1>();
 			const address& org = notfound_dy.get<2>();
 			DEBUG_OUT("for %llu\n",(unsigned long long)key);
-			
-			mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
-			std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
-			
-			if(it != send_fwd_r->end()){
+
+            std::unordered_multimap<uint64_t, get_fwd_t>::iterator it;
+            {
+                mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
+                it = send_fwd_r->find(key);
+			}
+			if(it != send_fwd.unsafe_ref().end()){
 				// read repair
 				const MERDY::put_dy* put_dy = z->allocate<MERDY::put_dy>(OP::PUT_DY, key, it->second.get_vcvalue(), address(settings.myip,settings.myport));
 				tuple_send_async(put_dy, org, &sockets, z);
