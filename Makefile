@@ -1,4 +1,4 @@
-CC=g++44
+CC=g++
 OPTS=-O4 -fexceptions -std=c++0x -march=x86-64 -g
 LD=-lmpio -lmsgpack -pthread -lboost_program_options  -ltokyocabinet
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \
@@ -34,7 +34,7 @@ mercury_test:mercury_test.o tcp_wrap.o
 
 master.o:master.cpp tcp_wrap.o $(HEADS)
 	$(CC) master.cpp -o master.o -c $(OPTS) $(WARNS)
-worker.o:worker.cpp tcp_wrap.o $(HEADS)
+worker.o:worker.cpp tcp_wrap.o tcpp.hpp $(HEADS)
 	$(CC) worker.cpp -o worker.o -c $(OPTS) $(WARNS)
 proxy.o:proxy.cpp tcp_wrap.o $(HEADS) sqlparser.hpp
 	$(CC) proxy.cpp -o proxy.o -c $(OPTS) $(WARNS)

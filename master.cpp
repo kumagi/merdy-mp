@@ -67,8 +67,6 @@ public:
 		msgpack::type::tuple<int> out(obj);
 		int operation = out.get<0>();
 		
-		
-		volatile enum OP::merdy_operations op = (OP::merdy_operations)operation;
 		switch (operation){
 		case OP::CREATE_SCHEMA:{
 			const MERDY::create_schema create_schema(obj);

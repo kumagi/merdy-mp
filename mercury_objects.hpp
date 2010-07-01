@@ -345,7 +345,7 @@ public:
 	}
 	void dump()const{
 		attr_.dump();
-		fprintf(stderr,"-> %lu",hash_);
+		fprintf(stderr,"-> %llu",hash_);
 	}
 	bool operator<(const mercury_kvp& rhs)const{
 		/*

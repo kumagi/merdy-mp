@@ -50,7 +50,7 @@ mp::sync< std::unordered_multimap<uint64_t, address> > coordinate_fwd; // coordi
 mp::sync< std::unordered_multimap<uint64_t, std::pair<int,address> > > put_fwd; // counter and origin address
 
 
-tokyo_cabinet::map<uint64_t, get_fwd_t> tc_send_fwd;
+tokyo_cabinet::multimap<uint64_t, get_fwd_t> tc_send_fwd;
 mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > > send_fwd; // counter and value with origin address
 mp::sync< std::unordered_multimap<uint64_t, value_vclock> > key_value;
 
@@ -161,8 +161,8 @@ public:
 			
 			const MERDY::set_coordinate* set_coordinate = z->allocate<MERDY::set_coordinate>(OP::SET_COORDINATE, key, value, address(settings.myip,settings.myport));
 			tuple_send_async(set_coordinate,coordinator,&sockets,z);
-            DEBUG_OUT("send to ");
-            DEBUG(coordinator.dump());
+			DEBUG_OUT("send to ");
+			DEBUG(coordinator.dump());
 			
 			DEBUG_OUT(" done\n");
 			break;
@@ -313,11 +313,11 @@ public:
 				it = dy_hash.begin();
 			}
 			{
-                /*
-				mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
-				send_fwd_r->insert(std::pair<uint64_t, get_fwd_t>(key, get_fwd_t(value_vclock(),org)));
-                */
-                tc_send_fwd.insert(key,get_fwd_t(value_vclock(),org));
+				/*
+					mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
+					send_fwd_r->insert(std::pair<uint64_t, get_fwd_t>(key, get_fwd_t(value_vclock(),org)));
+				*/
+				tc_send_fwd.insert(std::pair<uint64_t, get_fwd_t>(key,get_fwd_t(value_vclock(),org)));
 			}
 			int tablerest = dy_hash.size();
 			std::unordered_set<address, address_hash> sentlist;
@@ -379,7 +379,7 @@ public:
 			
 			//mp::sync< std::unordered_multimap<uint64_t, get_fwd_t > >::ref send_fwd_r(send_fwd);
 			//std::unordered_multimap<uint64_t, get_fwd_t>::iterator it = send_fwd_r->find(key);
-            tokyo_cabinet::map<uint64_t, get_fwd_t>::iterator it = tc_send_fwd.find(key);
+			tokyo_cabinet::multimap<uint64_t, get_fwd_t>::iterator it = tc_send_fwd.find(key);
 			if(it == tc_send_fwd.end()){
 				DEBUG_OUT("%llu already answered\n", (unsigned long long)key);
 				
@@ -403,7 +403,7 @@ public:
 				const MERDY::found_dy* found_dy = z->allocate<MERDY::found_dy>(OP::FOUND_DY,key,it->second.get_vcvalue(),address(settings.myip,settings.myport));
 				tuple_send_async(found_dy, it->second.org, &sockets, z);
 				DEBUG(it->second.dump());
-				tc_send_fwd.erase(it);
+				tc_send_fwd.erase(key);
 				DEBUG_OUT("answered ok\n");
 			}else{
 				DEBUG_OUT("updated ");
@@ -412,7 +412,7 @@ public:
 			}
 			break;
 		}
-		case OP::NOTFOUND_DY:{
+		case OP::NOTFOUND_DY:{ 
 			DEBUG_OUT("NOTFOUND_DY:");
 			const MERDY::notfound_dy& notfound_dy(obj);
 			const uint64_t& key = notfound_dy.get<1>();
@@ -627,7 +627,7 @@ public:
 			const std::list<mercury_kvp>& ans = ok_get_range.get<3>();
 			std::list<mercury_kvp> copy_ans = ans;
 			mp::sync< std::unordered_multimap<mer_fwd_id,
-					mer_get_fwd*, mer_fwd_id_hash> >::ref mer_range_fwd_r(mer_range_fwd);
+				mer_get_fwd*, mer_fwd_id_hash> >::ref mer_range_fwd_r(mer_range_fwd);
 			
 			std::unordered_multimap<mer_fwd_id,mer_get_fwd*>::iterator it = mer_range_fwd_r->find(mer_fwd_id(name,identifier));
 			it->second->toSend.merge(copy_ans);
@@ -690,8 +690,8 @@ public:
 					if(fowarding == NULL){ //  if its first time
 						fowarding = new mer_get_fwd(1, org);
 						mer_get_fwds_r->insert(std::pair<mer_fwd_id,mer_get_fwd*>
-											   (mer_fwd_id(name, identifier),
-												fowarding));
+																	 (mer_fwd_id(name, identifier),
+																		fowarding));
 					}
 					const std::map<attr_range, address>& hub = it->second.get_hubs();
 					std::map<attr_range, address>::const_iterator target = hub.begin();
@@ -867,7 +867,7 @@ public:
 		}
 		default:{
 			DEBUG_OUT("unrecognized\n");
-            assert(false);
+			assert(false);
 		}
 		}
 	}
@@ -901,7 +901,7 @@ public:
 			}
 		}
 		catch(msgpack::type_error& e) {
-            ::shutdown(fd(),SHUT_RDWR);
+			::shutdown(fd(),SHUT_RDWR);
 			throw;
 		} catch(std::exception& e) {
 			DEBUG_OUT("on_read: ");

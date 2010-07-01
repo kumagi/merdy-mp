@@ -1,4 +1,4 @@
-
+#include <stdint.h>
 #include "MurmurHash2_64.cpp" // MIT Licence
 
 #if __x86_64__ || _WIN64
