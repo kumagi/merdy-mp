@@ -233,20 +233,26 @@ class multimap{
 public:
 	class iterator{
 	public:
-		std::pair<const key,value>* kvp;
-		iterator(std::pair<const key,value>* _kvp)
+		std::pair<const key&,value&>* kvp;
+		iterator(std::pair<const key&,value&>* _kvp)
 			:kvp(_kvp){}
 		iterator(const iterator& o)
 			:kvp(o.kvp){}
 		iterator()
 			:kvp(*static_cast<key*>(NULL),*static_cast<value*>(NULL)){}
 		~iterator(){
-			delete kvp;
+            erase();
 		}
-		std::pair<const key,value>* operator->(){
+		std::pair<const key&,value&>* operator->(){
 			return kvp;
 		}
-		std::pair<const key,value>& operator*(){
+		std::pair<const key&,value&>& operator*(){
+			return *kvp;
+		}
+		const std::pair<const key&,value&>* operator->()const{
+			return kvp;
+		}
+		const std::pair<const key&,value&>& operator*()const{
 			return *kvp;
 		}
 		
@@ -258,14 +264,21 @@ public:
 			else return false;
 		}
 		bool operator!=(const iterator& rhs)const{
+            erase();
 			return !(operator==(rhs));
 		}
-		
 		iterator& operator=(const iterator& rhs){
 			kvp = rhs.kvp;
 			return *this;
 		}
 	private:
+        void erase(){
+            if(kvp){
+                free(&kvp->second);
+                delete kvp;
+            }
+        }
+
 		bool is_null()const{
 			return &kvp.first == &kvp.second;
 		}
@@ -288,11 +301,15 @@ public:
 	void insert(const std::pair<const key,value>& kvp){
 		tcmdbputcat(m,&kvp.first,sizeof(key),&kvp.second,sizeof(value));
 	}
+    void update(const iterator& it){
+        tcmdbput(m,&it->first,sizeof(it->first),&it->second,sizeof(it->second));
+    }
 	iterator find(const key& k){
 		int length;
 		value* result = static_cast<value*>(tcmdbget(m, &k, sizeof(k), &length));
+        fprintf(stderr,"value*[%p] ",result);
 		if(result != NULL){
-			return iterator(new std::pair<const key,value>(k,*result));
+			return iterator(new std::pair<const key&,value&>(k,*result));
 		}else{
 			return end();
 		}
@@ -306,7 +323,7 @@ public:
 			tcmdbout(m, &k, sizeof(k));
 			return true;
 		}
-		assert(length > sizeof(value));
+		assert(length > (int)sizeof(value));
 		char* newhead = reinterpret_cast<char*>(result) + sizeof(value);
 		tcmdbput(m, &k, sizeof(k), newhead, length - sizeof(value));
 		return true;

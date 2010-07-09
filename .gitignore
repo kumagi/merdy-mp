@@ -1,3 +1,13 @@
 *~
 *.o
 MurmurHash2*
+akiyama
+client
+dynamo_test
+master
+merdy.tar.gz
+merdy.txt
+nextdata.txt
+proxy
+random
+worker

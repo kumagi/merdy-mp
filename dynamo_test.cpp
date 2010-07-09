@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <boost/static_assert.hpp>
 #include <mp/wavy.h>
 #include <mp/sync.h>
 #include <unordered_map>
@@ -121,7 +122,6 @@ public:
 		case OP::OK_SET_DY:{// op, key, address
 			const MERDY::ok_set_dy& ok_set_dy(obj);
 			const uint64_t& key = ok_set_dy.get<1>();
-
 			static int num = settings.max_item;
 			DEBUG_OUT("OK_SET_DY:%lu\n ",key);
 			// responce for fowarding
@@ -139,7 +139,7 @@ public:
 			//const uint64_t& key = found_dy.get<1>();
 			//const value_vclock& value = found_dy.get<2>();
 			//const address& org = found_dy.get<3>();
-            
+
 			lock_mut lock(&mut);
 			found--;
 			if(found == 0){
@@ -286,7 +286,7 @@ inline void tuple_dump(const tuple& t){
     }
     fprintf(stderr,"]\n");
     
-    assert(sb.size() > 22);
+    //    assert(sb.size() > 22);
 }
 class timer{
     double time;
@@ -305,21 +305,31 @@ void* testbench(void*){
 	{// set_dy:{ // op, attr_name, list<mercury_kvp>, address
 		MERDY::tellme_hashes tellme_hashes(OP::TELLME_HASHES, address(settings.myip,settings.myport));
 		tuple_send(tellme_hashes,address(settings.targetip,settings.targetport));
+
 		while(!hash_flag);
     }
     {
         std::unordered_map<std::string, attr> dy_tuple;
         dy_tuple.insert(std::pair<std::string,attr>(std::string("hoge"), attr("t")));
 
-        t.restart();
+        /*
+        mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
+        msgpack::type::tuple<std::string,std::unordered_map<std::string, attr> >
+            tup(std::string("hoge0000000000000000000000000000000000000000000"),dy_tuple);
+        msgpack::object va(tup, z.get());
+        fprintf(stderr,"size:[%d]\n",sizeof(tup));
+        */
 
+        t.restart();
         {
-            DEBUG_OUT("start SET_DY 1000 times\n");
+            DEBUG_OUT("start SET_DY %d times\n",settings.max_item);
             for(int i=0;i<settings.max_item;i++){
                 mp::shared_ptr<msgpack::zone> z(new msgpack::zone());
+                msgpack::object value(dy_tuple,z.get());
+
                 uint64_t key = hash64(i);
                 address target = search_address(key);
-                const MERDY::set_dy* const set_dy = z->allocate<MERDY::set_dy>(OP::SET_DY, key, dy_tuple, address(settings.myip,settings.myport));
+                const MERDY::set_dy* const set_dy = z->allocate<MERDY::set_dy>(OP::SET_DY, key, value, address(settings.myip,settings.myport));
                 tuple_send_async(set_dy, target, z);
             }
         }

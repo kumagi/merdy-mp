@@ -1,4 +1,3 @@
-#include <unordered_map>
 
 enum flag{
 	TYPE_OTHER = -1,
@@ -34,6 +33,7 @@ enum merdy_operations{
 	SET_COORDINATE,
 	//reading
 	GET_DY,
+	OK_GET_DY,
 	GET_MULTI_DY,
 	SEND_DY,
 	FOUND_DY,
@@ -92,6 +92,7 @@ class value_vclock;
 class address;
 class attr;
 class attr_range;
+class vclock;
 class mercury_kvp;
 
 
@@ -114,18 +115,19 @@ typedef msgpack::type::tuple<int,std::map<uint64_t,address> > update_hashes;
 
 // proxy/dynamo -> dynamo
 typedef msgpack::type::tuple<int,uint64_t,address> get_dy;
+typedef msgpack::type::tuple<int,uint64_t,std::vector<value_vclock>,address> ok_get_dy;
 typedef msgpack::type::tuple<int,std::list<uint64_t>,address> get_multi_dy;
 typedef msgpack::type::tuple<int,std::set<address> > update_mer_hub;
-typedef msgpack::type::tuple<int,uint64_t,std::unordered_map<std::string,attr>,address> set_dy;
-typedef msgpack::type::tuple<int,uint64_t,std::unordered_map<std::string,attr>,address> set_coordinate;
+typedef msgpack::type::tuple<int,uint64_t,msgpack::object,address> set_dy;
+typedef msgpack::type::tuple<int,uint64_t,msgpack::object,address> set_coordinate;
 typedef msgpack::type::tuple<int,uint64_t,value_vclock, address> put_dy;
 typedef msgpack::type::tuple<int,uint64_t,address> send_dy;
 
 // proxy/dynamo -> dynamo/proxy
 typedef msgpack::type::tuple<int,uint64_t> ok_put_dy;
 typedef msgpack::type::tuple<int,uint64_t> ok_set_dy;
-typedef msgpack::type::tuple<int,uint64_t,value_vclock,address> found_dy;
-typedef msgpack::type::tuple<int,std::list<uint64_t>,std::list<value_vclock>,address> found_multi_dy;
+typedef msgpack::type::tuple<int,uint64_t, value_vclock ,address> found_dy;
+typedef msgpack::type::tuple<int,std::list<uint64_t>,std::vector<value_vclock>,address> found_multi_dy;
 typedef msgpack::type::tuple<int,uint64_t,address> notfound_dy;
 
 // master -> mercury

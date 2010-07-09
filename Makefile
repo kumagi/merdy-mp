@@ -1,5 +1,5 @@
 CC=g++44
-OPTS=-O4 -fexceptions -std=c++0x -march=x86-64 -g
+OPTS=-O0 -fexceptions -std=c++0x -march=x86-64 -g
 LD=-lmpio -lmsgpack -pthread -lboost_program_options  -ltokyocabinet
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \
 	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum
@@ -7,9 +7,9 @@ HEADS=hash64.h hash32.h random64.h address.hpp sockets.hpp merdy_operations.h de
 
 target:master
 target:worker
-target:proxy
-target:client
-target:random
+#target:proxy
+#target:client
+#target:random
 target:dynamo_test
 #target:mercury_test
 

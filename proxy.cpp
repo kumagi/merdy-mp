@@ -214,7 +214,7 @@ public:
 		std::list<value_vclock>::iterator data_it = found_data.begin();
 		std::string answer = prefix;
 		while(data_it != found_data.end()){
-			const std::unordered_map<std::string,attr>& data = data_it->get_value();
+			const msgpack::object& data = data_it->get_value();
 			std::list<std::string>::const_iterator names_it = select_names.begin();
 			while(names_it != select_names.end()){
 				const std::unordered_map<std::string,attr>::const_iterator ans_node = data.find(*names_it);

@@ -46,6 +46,9 @@ public:
 		int fd = get_socket(ad);
 		lo->writev(fd, vec,veclen,zone);
 	}
+    inline void write(int fd, const void* buff, int size, mp::shared_ptr<msgpack::zone>& zone){
+        lo->write(fd, buff, size, zone);
+    }
 
 	inline int get_socket(const address& ad){
 		mp::sync< std::unordered_map<address, int,address_hash> >::ref fds_r(fds);
@@ -88,9 +91,14 @@ inline void tuple_send(const tuple& t, const address& ad, socket_set* s){
 }
 
 template<typename tuple>
-inline void tuple_send_async(const tuple* t, const address& ad, socket_set* s, mp::shared_ptr<msgpack::zone> z){
+inline void tuple_send_async(const tuple* t, const address& ad, socket_set* s, mp::shared_ptr<msgpack::zone>& z){
+    msgpack::sbuffer* buf = z->allocate<msgpack::sbuffer>(256);
+    msgpack::pack(*buf,*t);
+    s->write(s->get_socket(ad), buf->data(), buf->size(), z);
+    /*
 	msgpack::vrefbuffer* vbuf = z->allocate<msgpack::vrefbuffer>();
 	msgpack::pack(*vbuf, *t);
 	const struct iovec* iov(vbuf->vector());
 	s->writev(ad, iov, vbuf->vector_size(),z);
+    */
 }
